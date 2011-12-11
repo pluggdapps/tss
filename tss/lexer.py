@@ -16,7 +16,6 @@
 
 
 import re, sys, logging
-
 import ply.lex
 from   ply.lex      import TOKEN
 
@@ -55,9 +54,12 @@ class TSSLexer( object ) :
         newlines = len( token.value.split('\n') ) - 1
         if newlines > 0 : token.lexer.lineno += newlines
     
+    def _preprocess( self, text ) :
+        return text
+
     ## --------------- Interface methods ------------------------------
 
-    def __init__( self, error_func=None, conf={}, filename='', ):
+    def __init__( self, error_func=None, conf={}, filename=u'', ):
         """ Create a new Lexer.
         error_func :
             An error function. Will be called with an error message, line
@@ -85,6 +87,7 @@ class TSSLexer( object ) :
 
     def input( self, text ) :
         """`text` to tokenise"""
+        text = self._preprocess( text )
         self.lexer.input( text )
     
     def token( self ) :
@@ -94,23 +97,28 @@ class TSSLexer( object ) :
 
     # States
     states = (
-               ( 'fnbody', 'exclusive' ),
+               ( 'cssblock', 'exclusive' ),
              )
 
     ## Tokens recognized by the TSSLexer
     tokens = (
-        'S', 'COMMENT', 'IMPORT_SYM', 'PAGE_SYM', 'MEDIA_SYM',
-        'FONT_FACE_SYM', 'CHARSET_SYM', 'NAMESPACE_SYM', 'IMPORTANT_SYM',
+        # Directives
+        'IMPORT_SYM', 'PAGE_SYM', 'MEDIA_SYM', 'FONT_FACE_SYM', 'CHARSET_SYM',
+        'NAMESPACE_SYM', 'IMPORTANT_SYM',
         'ATKEYWORD',
-        'URI', 'CDO', 'CDC', 'INCLUDES', 'DASHMATCH', 'BEGINMATCH',
-        'ENDMATCH', 'CONTAIN',
-        'HASH',
-        'PERCENTAGE', 'NUMBER', 'EMS', 'EXS',
-        'LENGTH', 'ANGLE', 'TIME', 'FREQ',
-        #'DIMEN',
-        'STRING', 'FUNCTION', 'IDENT',
-        'UNICODERANGE',
-        'DLIMIT',
+
+        # Comments
+        'CDO', 'CDC', 'S', 'COMMENT',
+
+        # CSS Expressions
+        'IDENT', 'URI', 'FUNCTION',
+
+        # Selector
+        'HASH', 'INCLUDES', 'DASHMATCH', 'PREFIXMATCH', 'SUFFIXMATCH',
+        'SUBSTRINGMATCH',
+
+        # Literals
+        'STRING', 'NUMBER', 'PERCENTAGE', 'DIMENSION', 'UNICODERANGE', 'DLIMIT',
 
         # Single character token 
         'PLUS', 'GT', 'LT', 'TILDA', 'COMMA', 'COLON', 'MINUS', 'EQUAL', 'DOT',
@@ -119,29 +127,37 @@ class TSSLexer( object ) :
         'OPENPARAN', 'CLOSEPARAN',
 
         # Extension tokens
-        'EXTN_EXPR', 'PERCENT', 'FUNCTIONSTART', 'FUNCTIONBODY',
-        'EXTN_STATEMENT', 'IFCONTROL','ELIFCONTROL',  'ELSECONTROL',
+        'EXTN_EXPR', 'EXTN_STATEMENT',
+        'PERCENT', 'FUNCTIONSTART', 'FUNCTIONBODY',
+        'IFCONTROL','ELIFCONTROL',  'ELSECONTROL',
         'FORCONTROL', 'WHILECONTROL',
     )
 
     # CSS3 tokens
 
-    h           = r'[0-9a-f]'
-    w		    = r'[ \t\r\n\f]*'
-    nl          = r'\n|\r\n|\r|\f'
-    num		    = r'([0-9]+|[0-9]*\.[0-9]+)'
-    nonascii    = r'[\200-\377]'
-    unicode_    = r'(\\[0-9a-f]{1,6}[ \t\r\n\f]?)'
-    escape		= unicode_ + r'|' r'(\\[ -~\200-\377])'
-    nmstart		= r'[a-z_]'     r'|' + nonascii + r'|' + escape
-    nmchar		= r'[a-z0-9_-]' r'|' + nonascii + r'|' + escape
-    string1		= r'("([\t !\#$%&(-~]|\\' + nl+ r"|'|" + nonascii + r'|' + escape + r')*")'
-    string2		= r"('([\t !\#$%&(-~]|\\" + nl+ r'|"|' + nonascii + r"|" + escape + r")*')"
-    string		= r'(' + string1 + r'|' + string2 + r')'
-    ident		= r'[-]?(' + nmstart + r')(' + nmchar + r')*'
-    name		= r'(' + nmchar + r')+'
-    url		    = r'([!\#$%&*-~]|' + nonascii + r'|' + escape +r')*'
-    range_      = r'\?{1,6}|[0-9a-f](\?{0,5}|[0-9a-f](\?{0,4}|' + \
+    hexnum   = r'[0-9a-f]'
+    tabspace = r' \t'
+    ws       = tabspace + '\r\n\f'
+    nl       = r'\n|\r\n|\r|\f'
+
+    spac     = r'[%s]*' % tabspace
+    space    = r'[%s]+' % tabspace
+    wspac    = r'[%s]*' % ws
+    wspace   = r'[%s]+' % ws
+
+    num		 = r'([0-9]+|[0-9]*\.[0-9]+)'
+    nonascii = r'[\200-\377]'
+    unicode_ = r'(\\[0-9a-f]{1,6}[ \t\r\n\f]?)'
+    escape	 = unicode_ + r'|' r'(\\[ -~\200-\377])'
+    nmstart	 = r'[a-z_]'     r'|' + nonascii + r'|' + escape
+    nmchar	 = r'[a-z0-9_-]' r'|' + nonascii + r'|' + escape
+    string1	 = r'("([\t !\#$%&(-~]|\\' + nl+ r"|'|" + nonascii + r'|' + escape + r')*")'
+    string2	 = r"('([\t !\#$%&(-~]|\\" + nl+ r'|"|' + nonascii + r"|" + escape + r")*')"
+    string	 = r'(' + string1 + r'|' + string2 + r')'
+    ident	 = r'[-]?(' + nmstart + r')(' + nmchar + r')*'
+    name	 = r'(' + nmchar + r')+'
+    url		 = r'([!\#$%&*-~]|' + nonascii + r'|' + escape +r')*'
+    range_   = r'\?{1,6}|[0-9a-f](\?{0,5}|[0-9a-f](\?{0,4}|' + \
                   r'[0-9a-f](\?{0,3}|[0-9a-f](\?{0,2}|[0-9a-f](\??|[0-9a-f])))))'
 
     def t_S( self, t ) :
@@ -151,10 +167,19 @@ class TSSLexer( object ) :
 
     def t_COMMENT( self, t ) :
         r'\/\*[^*]*\*+([^/][^*]*\*+)*\/'
+        self._incrlineno( t )
+        return t
+
+    def t_CHARSET_SYM( self, t ) :
+        r'@charset'
         return t
 
     def t_IMPORT_SYM( self, t ) :
         r'@import'
+        return t
+
+    def t_NAMESPACE_SYM( self, t ) :
+        r'@namespace'
         return t
 
     def t_PAGE_SYM( self, t ) :
@@ -169,47 +194,45 @@ class TSSLexer( object ) :
         r'@font-face'
         return t
 
-    def t_CHARSET_SYM( self, t ) :
-        r'@charset'
-        return t
-
-    def t_NAMESPACE_SYM( self, t ) :
-        r'@namespace'
-        return t
-
-    @TOKEN( r'!' + w + 'important' )
+    @TOKEN( r'!' + wspac + 'important' )
     def t_IMPORTANT_SYM( self, t ) :
         self._incrlineno( t )
         return t
 
     def t_FUNCTIONSTART( self, t ) :
         r'@def'
-        t.lexer.push_state('fnbody')
+        self._incrlineno( t )
+        t.lexer.push_state('cssblock')
         return t
 
     def t_IFCONTROL( self, t ) :
-        r'@if[^{]*\{'
-        t.lexer.push_state('fnbody')
+        r'@if.*(?!\{[\n\r])\{'
+        self._incrlineno( t )
+        t.lexer.push_state('cssblock')
         return t
 
     def t_ELIFCONTROL( self, t ) :
-        r'@elif[^{]*\{'
-        t.lexer.push_state('fnbody')
+        r'@elif.*(?!\{[\n\r])\{'
+        self._incrlineno( t )
+        t.lexer.push_state('cssblock')
         return t
 
     def t_ELSECONTROL( self, t ) :
-        r'@else[^{]*\{'
-        t.lexer.push_state('fnbody')
+        r'@else.*(?!\{[\n\r])\{'
+        self._incrlineno( t )
+        t.lexer.push_state('cssblock')
         return t
 
     def t_FORCONTROL( self, t ) :
-        r'@for[^{]*\{'
-        t.lexer.push_state('fnbody')
+        r'@for.*(?!\{[\n\r])\{'
+        self._incrlineno( t )
+        t.lexer.push_state('cssblock')
         return t
 
     def t_WHILECONTROL( self, t ) :
-        r'@while[^{]*\{'
-        t.lexer.push_state('fnbody')
+        r'@while.*(?!\{[\n\r])\{'
+        self._incrlineno( t )
+        t.lexer.push_state('cssblock')
         return t
 
     # Gotcha : Browser specific @-rules
@@ -218,7 +241,7 @@ class TSSLexer( object ) :
         return t
 
     # Gotcha : Confirmance issue : urls are not comfirming to string format
-    #@TOKEN( r'url\(' + w + string + w + r'\)' )
+    #@TOKEN( r'url\(' + wspac + string + wspac + r'\)' )
     @TOKEN( r'url\([^)]*\)' )
     def t_URI( self, t ) :
         self._incrlineno( t )
@@ -232,14 +255,6 @@ class TSSLexer( object ) :
         r'-->'
         return t
 
-    def t_EXTN_STATEMENT( self, t ) :
-        r'^[ ]*\$.*$'
-        return t
-
-    def t_EXTN_EXPR( self, t ) :
-        r'\$\{([^}])*\}'
-        return t
-
     def t_INCLUDES( self, t ) :
         r'~='
         return t
@@ -248,15 +263,15 @@ class TSSLexer( object ) :
         r'\|='
         return t
 
-    def t_BEGINMATCH( self, t ) :
+    def t_PREFIXMATCH( self, t ) :
         r'\^='
         return t
 
-    def t_ENDMATCH( self, t ) :
+    def t_SUFFIXMATCH( self, t ) :
         r'\$='
         return t
 
-    def t_CONTAIN( self, t ) :
+    def t_SUBSTRINGMATCH( self, t ) :
         r'\*='
         return t
 
@@ -266,96 +281,97 @@ class TSSLexer( object ) :
 
     @TOKEN( num + r'em' )
     def t_EMS( self, t ) :
+        t.type = 'DIMENSION'
+        t.value = Ems(t.value)
         return t
 
     @TOKEN( num + r'ex' )
     def t_EXS( self, t ) :
+        t.type = 'DIMENSION'
+        t.value = Exs(t.value)
         return t
 
     @TOKEN( num + r'px' )
     def t_LENGTH_PX( self, t ) :
-        t.type = 'LENGTH'
-        t.value = (LENGTH_PX, t.value)
+        t.type = 'DIMENSION'
+        t.value = LengthPX(t.value)
         return t
 
     @TOKEN( num + r'cm' )
     def t_LENGTH_CM( self, t ) :
-        t.type = 'LENGTH'
-        t.value = (LENGTH_CM, t.value)
+        t.type = 'DIMENSION'
+        t.value = LengthCM(t.value)
         return t
 
     @TOKEN( num + r'mm' )
     def t_LENGTH_MM( self, t ) :
-        t.type = 'LENGTH'
-        t.value = (LENGTH_MM, t.value)
+        t.type = 'DIMENSION'
+        t.value = LengthMM(t.value)
         return t
 
     @TOKEN( num + r'in' )
     def t_LENGTH_IN( self, t ) :
-        t.type = 'LENGTH'
-        t.value = (LENGTH_IN, t.value)
+        t.type = 'DIMENSION'
+        t.value = LengthIN(t.value)
         return t
 
     @TOKEN( num + r'pt' )
     def t_LENGTH_PT( self, t ) :
-        t.type = 'LENGTH'
-        t.value = (LENGTH_PT, t.value)
+        t.type = 'DIMENSION'
+        t.value = LengthPT(t.value)
         return t
 
     @TOKEN( num + r'pc' )
     def t_LENGTH_PC( self, t ) :
-        t.type = 'LENGTH'
-        t.value = (LENGTH_PC, t.value)
+        t.type = 'DIMENSION'
+        t.value = LengthPC(t.value)
         return t
 
     @TOKEN( num + r'deg' )
     def t_ANGLE_DEG( self, t ) :
-        t.type = 'ANGLE'
-        t.value = (ANGLE_DEG, t.value)
+        t.type = 'DIMENSION'
+        t.value = AngleDEG(t.value)
         return t
 
     @TOKEN( num + r'rad' )
     def t_ANGLE_RAD( self, t ) :
-        t.type = 'ANGLE'
-        t.value = (ANGLE_RAD, t.value)
+        t.type = 'DIMENSION'
+        t.value = AngleRAD(t.value)
         return t
 
     @TOKEN( num + r'grad' )
     def t_ANGLE_GRAD( self, t ) :
-        t.type = 'ANGLE'
-        t.value = (ANGLE_GRAD, t.value)
+        t.type = 'DIMENSION'
+        t.value = AngleGRAD(t.value)
         return t
 
     @TOKEN( num + r'ms' )
     def t_TIME_MS( self, t ) :
-        t.type = 'TIME'
-        t.value = (TIME_MS, t.value)
+        t.type = 'DIMENSION'
+        t.value = TimeMS(t.value)
         return t
 
     @TOKEN( num + r's' )
     def t_TIME_S( self, t ) :
-        t.type = 'TIME'
-        t.value = (TIME_S, t.value)
+        t.type = 'DIMENSION'
+        t.value = TimeS(t.value)
         return t
 
     @TOKEN( num + r'Hz' )
     def t_FREQ_HZ( self, t ) :
-        t.type = 'FREQ'
-        t.value = (FREQ_HZ, t.value)
+        t.type = 'DIMENSION'
+        t.value = FreqHZ(t.value)
         return t
 
     @TOKEN( num + r'kHz' )
     def t_FREQ_KHZ( self, t ) :
-        t.type = 'FREQ'
-        t.value = (FREQ_KHZ, t.value)
+        t.type = 'DIMENSION'
+        t.value = FreqKHZ(t.value)
         return t
-
-    #@TOKEN( num + ident )
-    #def t_DIMEN( self, t ) :
-    #    return t
 
     @TOKEN( num + r'%' )
     def t_PERCENTAGE( self, t ) :
+        t.value = Percentage(t.value)
         return t
 
     @TOKEN( num )
@@ -375,7 +391,7 @@ class TSSLexer( object ) :
     def t_IDENT( self, t ) :
         return t
 
-    @TOKEN( r'U\+' + h + r'{1,6}-' + h + r'{1,6}' )
+    @TOKEN( r'U\+%s{1,6}-%s{1,6}' % (hexnum, hexnum) )
     def t_UNICODERANGE_S( self, t ) : 
         t.type = 'UNICODERANGE'
         t.value = t.value
@@ -387,14 +403,23 @@ class TSSLexer( object ) :
         t.value = t.value
         return t
 
-    def t_fnbody_FUNCTIONSTART( self, t ):
+    def t_cssblock_FUNCTIONSTART( self, t ):
         r'@def'
         return t
 
-    def t_fnbody_FUNCTIONBODY( self, t ):
+    def t_cssblock( self, t ):
         r'.*@end'
         t.lexer.pop_state()
         return t
+
+    def t_EXTN_STATEMENT( self, t ) :
+        r'^[ ]*\$.*$'
+        return t
+
+    def t_EXTN_EXPR( self, t ) :
+        r'\$\{([^}])*\}'
+        return t
+
 
     t_PLUS          = r'\+'
     t_GT            = r'>'
@@ -421,7 +446,7 @@ class TSSLexer( object ) :
         msg = 'Illegal character %s' % repr(t.value[0])
         self._error(msg, t)
 
-    def t_fnbody_error( self, t ):
+    def t_cssblock_error( self, t ):
         msg = 'Illegal character %s' % repr(t.value[0])
         self._error(msg, t)
 

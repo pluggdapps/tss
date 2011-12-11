@@ -1,0 +1,13 @@
+* What is BOM in syntax grammar ? Should this part of string encoding or lexer ?
+
+* charset directive should be read and based on the character-set encoding
+  the whole text must be re-read. This character set encoding specified in TTL
+  text must override the encoding config-param passed by the caller program.
+  Intermediate python file should also adhere to this encoding.
+
+* There is more to web-fonts than what meets the eye. Spend time understanding
+  @font-face and check how TSS can help.
+
+* A complete list of CSS3 modules-  http://www.css3.info/modules/
+  CSS Standar Home page - http://www.w3.org/Style/CSS/
+

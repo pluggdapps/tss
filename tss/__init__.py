@@ -16,9 +16,12 @@
 * Normalization function for configuration values.
 """
 
-from  tss.utils     import ConfigDict, asboo, parsecsv
+from  tss.utils     import ConfigDict, asbool, parsecsv
 
 __version__ = '0.1dev'
+
+DEFAULT_ENCODING = 'utf-8'
+DEVMOD = False
 
 defaultconfig = ConfigDict()
 defaultconfig.__doc__ = """Configuration settings for TSS extension language."""
@@ -61,8 +64,14 @@ defaultconfig['strict_undefined']    = {
 defaultconfig['directories']             = {
     'default' : '.',
     'types'   : ('csv', list),
-    'help'    : "Comma separated list of directory path to look for a "
+    'help'    : "Comma separated list of directory path to look for "
                 "tss files. Default will be current-directory."
+}
+defaultconfig['module_directory']        = {
+    'default' : None,
+    'types'   : (str,),
+    'help'    : "Directory path telling the compiler where to persist (cache) "
+                "intermediate python file."
 }
 defaultconfig['input_encoding']          = {
     'default' : 'utf-8',
@@ -92,6 +101,7 @@ def normalizeconfig( config ):
     config['devmod'] = asbool( config.get('devmod', False) )
     config['parse_optimize'] = asbool( config['parse_optimize'] )
     config['strict_undefined'] = asbool( config['strict_undefined'] )
+    config['module_directory'] = config['module_directory'] or None
     config['memcache'] = asbool( config['memcache'] )
     config['text_as_hashkey'] = asbool( config['text_as_hashkey'] )
     try    : config['directories'] = parsecsv( config['directories'] )
@@ -100,21 +110,22 @@ def normalizeconfig( config ):
 
 #---- APIs for executing TSS Extension language
 
-class Generator( object ):
-    """Generate CSS from a TSS
+class Translator( object ):
+    """Translate TSS file(s) to CSS
 
-    `tssconfig` parameter will find its way into every object defined
-    by language engine.
+    `tssconfig` parameter will find its way into every object translating
+    this TSS text into CSS text.
     """
-    def __init__( self, tssloc=None, ttltext=None, ttlconfig={} ):
-        ttlconfig = ttlconfig or deepcopy( dict(defaultconfig.items()) )
+    def __init__( self, tssloc=None, tsstext=None, tssconfig={} ):
+        self.tssconfig = dict( defaultconfig.items() )
+        self.tssconfig.update( tssconfig )
+        self.tssconfig.setdefault( 'devmod', DEVMOD )
         # Initialize plugins
-        self.ttlconfig = initplugins( ttlconfig, force=ttlconfig['devmod'] )
-        self.ttlloc, self.ttltext = ttlloc, ttltext
-        self.ttlparser = TTLParser( ttlconfig=self.ttlconfig )
+        self.tssloc, self.tsstext = tssloc, tsstext
+        self.tssparser = TSSParser( tssconfig=self.tssconfig )
 
-    def __call__( self, entryfn='body', context={} ):
-        """Compile, execute and return html text corresponding the template
+    def __call__( self, entryfn='main', context={} ):
+        """Compile, execute and return css text corresponding to this TSS
         document.
 
         key-word arguments,
@@ -122,58 +133,56 @@ class Generator( object ):
             name of entry function to be called.
         ``context``,
             dictionary of key,value pairs to be used as context for generating
-            html document.
+            css text.
 
-        Arguments to body() function can be passed via context variables,
-        ``_bodyargs`` (a list of positional arguments) and ``_bodykwargs`` a
+        Arguments to main() function can be passed via context variables,
+        ``_mainargs`` (a list of positional arguments) and ``_mainkwargs`` a
         dictionary of key-word arguments.
 
-        dictionary object ``context`` will also be available as _ttlcontext
+        dictionary object ``context`` will also be available as _tsscontext
         variable.
         """
-        from tayra.compiler import Compiler
-        self.compiler = Compiler( ttltext=self.ttltext,
-                                  ttlloc=self.ttlloc,
-                                  ttlconfig=self.ttlconfig,
-                                  ttlparser=self.ttlparser
+        from tss.compiler import Compiler
+        self.compiler = Compiler( tsstext=self.tsstext,
+                                  tssloc=self.tssloc,
+                                  tssconfig=self.tssconfig,
+                                  tssparser=self.tssparser
                                 )
-        context['_ttlcontext'] = context
-        module = self.compiler.execttl( context=context )
+        context['_tsscontext'] = context
+        module = self.compiler.exectss( context=context )
         # Fetch parent-most module
         entry = getattr( module.self, entryfn )
-        args = context.get( '_bodyargs', [] )
-        kwargs = context.get( '_bodykwargs', {} )
-        html = entry( *args, **kwargs ) if callable( entry ) else u''
-        return html
+        args = context.get( '_mainargs', [] )
+        kwargs = context.get( '_mainkwargs', {} )
+        css = entry( *args, **kwargs ) if callable( entry ) else u''
+        return css
 
-def ttl_cmdline( ttlloc, **kwargs ):
-    from   tayra.compiler       import Compiler
 
-    ttlconfig = deepcopy( dict( defaultconfig.items() ))
+def tss_cmdline( tssloc, **kwargs ):
+    from tss.compiler       import Compiler
+
+    tssconfig = deepcopy( dict( defaultconfig.items() ))
     # directories, module_directory, devmod
-    ttlconfig.update( kwargs )
-    ttlconfig.setdefault( 'module_directory', dirname( ttlloc ))
+    tssconfig.update( kwargs )
 
     # Parse command line arguments and configuration
-    args = eval( ttlconfig.pop( 'args', '[]' ))
-    context = ttlconfig.pop( 'context', {} )
+    tssconfig.setdefault('devmod', DEVMOD)
+    args = eval( tssconfig.pop( 'args', '[]' ))
+    context = tssconfig.pop( 'context', {} )
     context = eval(context) if isinstance(context, basestring) else context
-    context.update( _bodyargs=args ) if args else None
-    debuglevel = ttlconfig.pop( 'debuglevel', 0 )
-    show = ttlconfig.pop( 'show', False )
-    dump = ttlconfig.pop( 'dump', False )
-    encoding = ttlconfig['input_encoding']
-
-    # Initialize plugins
-    ttlconfig = initplugins( ttlconfig, force=ttlconfig['devmod'] )
+    context.update( _mainargs=args ) if args else None
+    debuglevel = tssconfig.pop( 'debuglevel', 0 )
+    show = tssconfig.pop( 'show', False )
+    dump = tssconfig.pop( 'dump', False )
+    encoding = tssconfig['input_encoding']
 
     # Setup parser
-    ttlparser = TTLParser(
-            ttlconfig=ttlconfig, debug=debuglevel )
-    comp = Compiler( ttlloc=ttlloc, ttlconfig=ttlconfig, ttlparser=ttlparser )
-    pyfile = comp.ttlfile+'.py'
-    htmlfile = basename( comp.ttlfile ).rsplit('.', 1)[0] + '.html'
-    htmlfile = join( dirname(comp.ttlfile), htmlfile )
+    tssparser = TSSParser(
+                    tssconfig=tssconfig, debug=debuglevel )
+    comp = Compiler( tssloc=tssloc, tssconfig=tssconfig, tssparser=tssparser )
+    pyfile = comp.tssfile+'.py'
+    cssfile = basename( comp.tssfile ).rsplit('.', 1)[0] + '.css'
+    cssfile = join( dirname(comp.tssfile), cssfile )
 
     if debuglevel :
         print "AST tree ..."
@@ -185,22 +194,20 @@ def ttl_cmdline( ttlloc, **kwargs ):
     elif dump :
         tu = comp.toast()
         rctext =  tu.dump()
-        if rctext != codecs.open( comp.ttlfile, encoding=encoding ).read() :
+        if rctext != codecs.open( comp.tssfile, encoding=encoding ).read() :
             print "Mismatch ..."
         else : print "Success ..."
     else :
-        print "Generating py / html file ... "
-        pytext = comp.topy( ttlhash=comp.ttllookup.ttlhash )
+        print "Generating py / CSS file ... "
+        pytext = comp.topy( tsshash=comp.tsslookup.tsshash )
         # Intermediate file should always be encoded in 'utf-8'
         codecs.open(pyfile, mode='w', encoding=DEFAULT_ENCODING).write(pytext)
 
-        ttlconfig.setdefault( 'memcache', True )
-        r = Renderer( ttlloc=ttlloc, ttlconfig=ttlconfig )
-        html = r( context=context )
-        codecs.open( htmlfile, mode='w', encoding=encoding).write( html )
+        t = Translator( tssloc=tssloc, tssconfig=tssconfig )
+        css = t( context=context )
+        codecs.open( cssfile, mode='w', encoding=encoding).write( css )
 
         # This is for measuring performance
         st = dt.now()
-        [ r( context=context ) for i in range(2) ]
+        [ t( context=context ) for i in range(2) ]
         print (dt.now() - st) / 2
-

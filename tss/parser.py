@@ -431,9 +431,9 @@ class TSSParser( object ):
         """attr_oper    : equal
                         | includes
                         | dashmatch
-                        | beginmatch
-                        | endmatch
-                        | contain"""
+                        | prefixmatch
+                        | suffixmatch
+                        | substringmatch"""
         p[0] = AttrOper( p.parser, p[1] )
 
     def p_attrval( self, p ) :
@@ -553,12 +553,7 @@ class TSSParser( object ):
     def p_term_val( self, p ) :
         """term_val     : number
                         | percentage
-                        | ems
-                        | exs
-                        | length
-                        | angle
-                        | time
-                        | freq
+                        | dimension
                         | func_call"""
         p[0] = TermVal( p.parser, p[1] )
                          
@@ -731,47 +726,12 @@ class TSSParser( object ):
         wc = p[2] if len(p) == 3 else None
         p[0] = TerminalS( p.parser, t, wc )
 
-    def p_ems( self, p ) :
-        """ems          : EMS wc
-                        | EMS"""
-        t = EMS( p.parser, p[1] )
+    def p_dimension( self, p ) :
+        """dimension    : DIMENSION wc
+                        | DIMENSION"""
+        t = Dimension( p.parser, p[1] )
         wc = p[2] if len(p) == 3 else None
         p[0] = TerminalS( p.parser, t, wc )
-
-    def p_exs( self, p ) :
-        """exs          : EXS wc
-                        | EXS"""
-        t = EXS( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_length( self, p ) :
-        """length       : LENGTH wc
-                        | LENGTH"""
-        cls, val = p[1]
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, cls(p.parser, val), wc )
-
-    def p_angle( self, p ) :
-        """angle        : ANGLE wc
-                        | ANGLE"""
-        cls, val = p[1]
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, cls(p.parser, val), wc )
-
-    def p_time( self, p ) :
-        """time         : TIME wc
-                        | TIME"""
-        cls, val = p[1]
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, cls(p.parser, val), wc )
-
-    def p_freq( self, p ) :
-        """freq         : FREQ wc
-                        | FREQ"""
-        cls, val = p[1]
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, cls(p.parser, val), wc )
 
     def p_fwdslash( self, p ) :
         """fwdslash     : FWDSLASH wc
@@ -815,24 +775,24 @@ class TSSParser( object ):
         wc = p[2] if len(p) == 3 else None
         p[0] = TerminalS( p.parser, t, wc )
 
-    def p_beginmatch( self, p ) :
-        """beginmatch   : BEGINMATCH wc
-                        | BEGINMATCH"""
-        t = BEGINMATCH( p.parser, p[1] )
+    def p_prefixmatch( self, p ) :
+        """prefixmatch  : PREFIXMATCH wc
+                        | PREFIXMATCH"""
+        t = PREFIXMATCH( p.parser, p[1] )
         wc = p[2] if len(p) == 3 else None
         p[0] = TerminalS( p.parser, t, wc )
 
-    def p_endmatch( self, p ) :
-        """endmatch     : ENDMATCH wc
-                        | ENDMATCH"""
-        t = ENDMATCH( p.parser, p[1] )
+    def p_suffixmatch( self, p ) :
+        """suffixmatch  : SUFFIXMATCH wc
+                        | SUFFIXMATCH"""
+        t = SUFFIXMATCH( p.parser, p[1] )
         wc = p[2] if len(p) == 3 else None
         p[0] = TerminalS( p.parser, t, wc )
 
-    def p_contain( self, p ) :
-        """contain      : CONTAIN wc
-                        | CONTAIN"""
-        t = CONTAIN( p.parser, p[1] )
+    def p_substringmatch( self, p ) :
+        """substringmatch   : SUBSTRINGMATCH wc
+                            | SUBSTRINGMATCH"""
+        t = SUBSTRINGMATCH( p.parser, p[1] )
         wc = p[2] if len(p) == 3 else None
         p[0] = TerminalS( p.parser, t, wc )
 

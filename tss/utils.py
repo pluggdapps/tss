@@ -18,6 +18,9 @@ class ConfigItem( dict ):
     ``webconfig``,
         Boolean, specifying whether the settings parameter is configurable via
         web.
+
+    Method call ``html(request=request)`` can be used to translate help text
+    into html.
     """
     typestr = {
         str   : 'str', unicode : 'unicode', list : 'list', tuple : 'tuple',
@@ -26,6 +29,23 @@ class ConfigItem( dict ):
     def _options( self ):
         opts = self.get( 'options', '' )
         return opts() if callable(opts) else opts
+
+    def html( self, request=None ):
+        from  bootstrap.pluggdapp import pyramidapps
+        bootstrap = pyramidapps.get( 'bootstrap', None )
+        helptxt = self.help
+        if bootstrap and request :
+            sett = request.environ['settings']
+            etxconfig = sett.sections['mod:eazytext']
+            fn = lambda m : '[[ %s | %s ]]' % (
+                        m, bootstrap.route_url('ispeccls', cls=m) )
+            helptxt = re.sub(r'IPluggd[a-zA-Z0-9_]*', fn, helptxt )
+        else :
+            etxconfig = {}
+        etxconfig['nested'] = True
+        etxconfig['nested.article'] = False
+        html = etx2html( etxconfig, etxtext=helptxt )
+        return html
 
     # Compulsory fields
     default = property( lambda self : self['default'] )
@@ -58,7 +78,6 @@ class ConfigDict( dict ):
         return self._spec
 
 
-
 def asbool( obj ):
     """Convert ``obj`` to Boolean value based on its string representation"""
     if not isinstance(obj, (str, unicode)) : return bool(obj)
@@ -86,4 +105,3 @@ def hitch( function, *args, **kwargs ) :
         kwargs.update( kw )
         return function( *(args+a), **kwargs )
     return fnhitched
-
