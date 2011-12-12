@@ -267,49 +267,18 @@ class TSSParser( object ):
         """font_face    : font_face_sym block"""
         p[0] = FontFace( p.parser, p[1], p[2] )
 
-    #---- atrule
-
-    # Gotcha : Handle generic at-rules
-    def p_atrule_1( self, p ) :
-        """atrule       : atkeyword expr block"""
-        p[0] = AtRule( p.parser, p[1], expr=p[2], block=p[3] )
-
-    def p_atrule_2( self, p ) :
-        """atrule       : atkeyword expr SEMICOLON"""
-        p[0] = AtRule( p.parser, p[1], expr=p[2],
-                       semicolon=SEMICOLON(p.parser, p[3]) )
-
-    def p_atrule_3( self, p ) :
-        """atrule       : atkeyword block"""
-        p[0] = AtRule( p.parser, p[1], block=p[2] )
-
-    def p_atrule_4( self, p ) :
-        """atrule       : atkeyword SEMICOLON"""
-        p[0] = AtRule( p.parser, p[1], semicolon=SEMICOLON(p.parser, p[2]) )
-
-    def p_atrule_5( self, p ) :
-        """atrule       : atkeyword expr openbrace rulesets CLOSEBRACE"""
-        c = CLOSEBRACE( p.parser, p[5] )
-        p[0] = AtRule( p.parser, p[1], expr=p[2], obrace=p[3], rulesets=p[4],
-                       cbrace=c )
-
-    def p_atrule_6( self, p ) :
-        """atrule       : atkeyword openbrace rulesets CLOSEBRACE"""
-        c = CLOSEBRACE( p.parser, p[4] )
-        p[0] = AtRule( p.parser, p[1], obrace=p[2], rulesets=p[3], cbrace=c )
-
-    #---- media
+    #---- @media
 
     def p_media_1( self, p ) :
-        """media        : media_sym mediums openbrace rulesets CLOSEBRACE"""
-        cbrc = CLOSEBRACE( p.parser, p[5] )
-        p[0] = Media( p.parser, p[1], p[2], p[3], p[4], cbrc )
+        """media        : media_sym mediums openbrace rulesets closebrace"""
+        decl = Declarations( p.parser, None, None, p[4] )
+        bloc = Block( p[3], decl, p[5] )
+        p[0] = Media( p.parser, p[1], p[2], bloc )
 
     def p_media_2( self, p ) :
-        """media        : media_sym mediums openbrace CLOSEBRACE"""
-        cbrc = CLOSEBRACE( p.parser, p[4] )
-        p[0] = Media( p.parser, p[1], p[2], p[3], None, cbrc )
-
+        """media        : media_sym mediums openbrace closebrace"""
+        bloc = Block( p[3], None, p[4] )
+        p[0] = Media( p.parser, p[1], p[2], block )
 
     def p_mediums( self, p ) :
         """mediums      : medium
@@ -318,14 +287,46 @@ class TSSParser( object ):
         if len(p) == 4 :
             args = [ p[1], p[2], p[3] ]
         else :
-            args = [ p[1], None, p[2] ] if len(p) == 3 else [ None, None, p[1] ]
+            args = [ p[1], None, p[2] ] if len(p) == 3 else [None, None, p[1]]
         p[0] = Mediums( p.parser, *args )
-
 
     def p_medium( self, p ) :
         """medium       : expr
                         | any"""
         p[0] = Medium( p.parser, p[1] )
+
+    #---- atrule
+
+    # Gotcha : Handle generic at-rules
+    def p_atrule_1( self, p ) :
+        """atrule       : atkeyword expr block"""
+        p[0] = AtRule( p.parser, p[1], p[2], None, p[3] )
+
+    def p_atrule_2( self, p ) :
+        """atrule       : atkeyword expr SEMICOLON"""
+        semi = SEMICOLON(p.parser, p[3])
+        p[0] = AtRule( p.parser, p[1], p[2], semi, None )
+
+    def p_atrule_3( self, p ) :
+        """atrule       : atkeyword block"""
+        p[0] = AtRule( p.parser, p[1], None, None, p[2] )
+
+    def p_atrule_4( self, p ) :
+        """atrule       : atkeyword SEMICOLON"""
+        semi = SEMICOLON(p.parser, p[2])
+        p[0] = AtRule( p.parser, p[1], None, semi, None )
+
+    def p_atrule_5( self, p ) :
+        """atrule       : atkeyword expr openbrace rulesets closebrace"""
+        decl = Declarations( p.parser, None, None, p[4] )
+        bloc = Block( p[3], decl, p[5] )
+        p[0] = AtRule( p.parser, p[1], p[2], None, bloc )
+
+    def p_atrule_6( self, p ) :
+        """atrule       : atkeyword openbrace rulesets closebrace"""
+        decl = Declarations( p.parser, None, None, p[3] )
+        bloc = Block( p[2], decl, p[4] )
+        p[0] = AtRule( p.parser, p[1], None, None, bloc )
 
     #---- ruleset
 
@@ -380,19 +381,19 @@ class TSSParser( object ):
 
     def p_simple_selector_1( self, p ) :
         """simple_selector  : element_name"""
-        p[0] = SimpleSelector( p.parser, None, p[1], None )
+        p[0] = SimpleSelector( p.parser, None, p[1], None, None )
 
     def p_simple_selector_2( self, p ) :
         """simple_selector  : extender"""
-        p[0] = SimpleSelector( p.parser, None, None, p[1] )
+        p[0] = SimpleSelector( p.parser, None, None, p[1], None )
 
     def p_simple_selector_3( self, p ) :
         """simple_selector  : extn_expr"""
-        p[0] = SimpleSelector( p.parser, None, None, p[1] )
+        p[0] = SimpleSelector( p.parser, None, None, None, p[1] )
 
     def p_simple_selector_4( self, p ) :
         """simple_selector  : simple_selector extender"""
-        p[0] = SimpleSelector( p.parser, p[1], None, p[2] )
+        p[0] = SimpleSelector( p.parser, p[1], None, p[2], None )
 
     def p_element_name( self, p ) :
         """element_name : ident
@@ -401,6 +402,12 @@ class TSSParser( object ):
         # only `&` is allowd in DLIMIT terminal, this constraint should be
         # checked inside `ElementName` class
         p[0] = ElementName( p.parser, p[1] )
+
+    def p_combinator( self, p ) :
+        """combinator   : plus
+                        | gt
+                        | tilda"""
+        p[0] = Combinator( p.parser, p[1] )
 
     def p_extender( self, p ) :
         """extender     : hash
@@ -447,13 +454,13 @@ class TSSParser( object ):
 
     def p_pseudoname_1( self, p ) :
         """pseudo_name  : ident"""
-        p[0] = PseudoName( p.parser, None, p[1], None )
+        p[0] = PseudoName( p.parser, p[1], None, None, None )
 
     def p_pseudoname_2( self, p ) :
         """pseudo_name  : function simple_selector closeparan
                         | function string closeparan
                         | function number closeparan"""
-        p[0] = PseudoName( p.parser, p[1], p[2], p[3] )
+        p[0] = PseudoName( p.parser, None, p[1], p[2], p[3] )
 
     #---- block
 
@@ -488,22 +495,22 @@ class TSSParser( object ):
     def p_declaration_1( self, p ) :
         """declaration  : ident colon expr prio
                         | ident colon expr"""
-        args = [ None, p[1], p[2], p[3], p[4] 
-               ] if len(p) == 5 else [ None, p[1], p[2], p[3], None ]
+        args = [ None, p[1], None, p[2], p[3], p[4] 
+               ] if len(p) == 5 else [ None, p[1], None, p[2], p[3], None ]
         p[0] = Declaration( p.parser, *args )
 
     def p_declaration_2( self, p ) :
         """declaration  : extn_expr colon expr prio
                         | extn_expr colon expr"""
-        args = [ None, p[1], p[2], p[3], p[4] 
-               ] if len(p) == 5 else [ None, p[1], p[2], p[3], None ]
+        args = [ None, None, p[1], p[2], p[3], p[4] 
+               ] if len(p) == 5 else [ None, None, p[1], p[2], p[3], None ]
         p[0] = Declaration( p.parser, *args )
 
     def p_declaration_3( self, p ) :
         """declaration  : star ident colon expr prio
                         | star ident colon expr"""
-        args = [ p[1], p[2], p[3], p[4], p[5] 
-               ] if len(p) == 6 else [ p[1], p[2], p[3], p[4], None ]
+        args = [ p[1], p[2], None, p[3], p[4], p[5] 
+               ] if len(p) == 6 else [ p[1], p[2], None, p[3], p[4], None ]
         p[0] = Declaration( p.parser, *args )
 
     def p_prio( self, p ) :
@@ -554,10 +561,6 @@ class TSSParser( object ):
                         | func_call"""
         p[0] = TermVal( p.parser, p[1] )
                          
-    #def p_term_dimen( self, p ) :
-    #    """term_val     : dimen"""
-    #    p[0] = TermVal( p.parser, p[1] )
-
     def p_func( self, p ) :
         """func_call    : function expr closeparan
                         | function closeparan"""
@@ -584,12 +587,6 @@ class TSSParser( object ):
     #    """unary_oper   : plus
     #                    | minus"""
     #    p[0] = Unary( p.parser, p[1] )
-
-    def p_combinator( self, p ) :
-        """combinator   : plus
-                        | gt
-                        | tilda"""
-        p[0] = Combinator( p.parser, p[1] )
 
     #---- Terminals with whitespace
 
@@ -999,7 +996,7 @@ class TSSParser( object ):
     #---- For confirmance with forward compatible CSS
 
     def p_any( self, p) :
-        """any          : opensqr   expr closesqr"""
+        """any          : opensqr expr closesqr"""
         p[0] = Any( p.parser, p[1], p[2], p[3] )
 
     def p_error( self, p ):
