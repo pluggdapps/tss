@@ -11,3 +11,7 @@
 * A complete list of CSS3 modules-  http://www.css3.info/modules/
   CSS Standar Home page - http://www.w3.org/Style/CSS/
 
+* CSS filter http://en.wikipedia.org/wiki/CSS_filter hacks. Should we support
+  them ?
+
+* CSS3 `media-queries` for atrules to be supported.

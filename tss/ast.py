@@ -4,7 +4,7 @@
 
 # -*- coding: utf-8 -*-
 
-"""Module containing Node definition for all non-teminals nodes.
+"""Module containing Node definition for all terminal and non-teminals nodes.
 
 The AST tree is constructed according to the grammar. From the root
 non-terminal use the children() method on every node to walk through the tree.
@@ -17,8 +17,6 @@ To walk throug the AST,
 # Gotcha : None
 # Notes  : None
 # Todo   : None
-#   1. Add unicode support
-#   2. Terminal, should be stored in UPPERCASE attributes.
 
 import sys, re
 
@@ -320,7 +318,7 @@ class Namespace( Node ):
         [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
 
 
-class Nameprefix( Node ) :
+class NamePrefix( Node ) :
     """class to handle `nmprefix` grammar."""
 
     def __init__( self, parser, ident ) :
@@ -498,33 +496,33 @@ class Page( Node ) :
         [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
 
 
-class PseudoPage( Node ) :
-    """class to handle `pseudo_page` grammar."""
-
-    def __init__( self, parser, colon, ident ) :
-        Node.__init__( self, parser, colon, ident )
-        self.parser = parser
-        self.COLON, self.ident = colon, ident
-        self._terms = (self.COLON,)
-        self._nonterms = (self.ident,)
-
-    def children( self ) :
-        return (self.COLON, self.ident)
-
-    def tohtml( self ) :
-        pass
-
-    def dump( self ) :
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ) :
-        lead = ' ' * offset
-        buf.write( lead + 'pseudo_page: ' )
-        if showcoord:
-            buf.write( ' (at %s)' % self.coord )
-        buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+#class PseudoPage( Node ) :
+#    """class to handle `pseudo_page` grammar."""
+#
+#    def __init__( self, parser, colon, ident ) :
+#        Node.__init__( self, parser, colon, ident )
+#        self.parser = parser
+#        self.COLON, self.ident = colon, ident
+#        self._terms = (self.COLON,)
+#        self._nonterms = (self.ident,)
+#
+#    def children( self ) :
+#        return (self.COLON, self.ident)
+#
+#    def tohtml( self ) :
+#        pass
+#
+#    def dump( self ) :
+#        return ''.join([ c.dump() for c in self.children() ])
+#
+#    def show( self, buf=sys.stdout, offset=0, attrnames=False,
+#              showcoord=False ) :
+#        lead = ' ' * offset
+#        buf.write( lead + 'pseudo_page: ' )
+#        if showcoord:
+#            buf.write( ' (at %s)' % self.coord )
+#        buf.write('\n')
+#        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
 
 
 class FontFace( Node ) :
@@ -1837,63 +1835,50 @@ class WhileBlock( Node ):
 
 #-------------------------- AST Terminals -------------------------
 
-class CHARSET_SYM( Terminal ) : pass
 class IMPORT_SYM( Terminal ) : pass
-class NAMESPACE_SYM( Terminal ) : pass
-class MEDIA_SYM( Terminal ) : pass
 class PAGE_SYM( Terminal ) : pass
+class MEDIA_SYM( Terminal ) : pass
 class FONT_FACE_SYM( Terminal ) : pass
+class CHARSET_SYM( Terminal ) : pass
+class NAMESPACE_SYM( Terminal ) : pass
 class IMPORTANT_SYM( Terminal ) : pass
-class FUNCTIONSTART( Terminal ) : pass
-class FUNCTIONEND( Terminal ) : pass
 class ATKEYWORD( Terminal ) : pass
-class URI( Terminal ) : pass
+
 class CDO( Terminal ) : pass
 class CDC( Terminal ) : pass
+class S( Terminal ) : pass
+class COMMENT( Terminal ) : pass
+
+class IDENT( Terminal ) : pass
+class URI( Terminal ) : pass
+class FUNCTION( Terminal ) : pass
+
+class HASH( Terminal ) : pass
 class INCLUDES( Terminal ) : pass
 class DASHMATCH( Terminal ) : pass
-class BEGINMATCH( Terminal ) : pass
-class ENDMATCH( Terminal ) : pass
-class CONTAIN( Terminal ) : pass
-class HEXCOLOR( Terminal ) : pass
-class PERCENTAGE( Terminal ) : pass
-class NUMBER( Terminal ) : pass
-class EMS( Terminal ) : pass
-class EXS( Terminal ) : pass
-class LENGTH_PX( Terminal ) : pass
-class LENGTH_MM( Terminal ) : pass
-class LENGTH_CM( Terminal ) : pass
-class LENGTH_IN( Terminal ) : pass
-class LENGTH_PT( Terminal ) : pass
-class LENGTH_PC( Terminal ) : pass
-class ANGLE_DEG( Terminal ) : pass
-class ANGLE_RAD( Terminal ) : pass
-class ANGLE_GRAD( Terminal ) : pass
-class TIME_MS( Terminal ) : pass
-class TIME_S( Terminal ) : pass
-class FREQ_HZ( Terminal ) : pass
-class FREQ_KHZ( Terminal ) : pass
+class PREFIXMATCH( Terminal ) : pass
+class SUFFIXMATCH( Terminal ) : pass
+class SUBSTRINGMATCH( Terminal ) : pass
+
 class STRING( Terminal ) : pass
-class FUNCTION( Terminal ) : pass
-class IDENT( Terminal ) : pass
-class NAME( Terminal ) : pass
+class NUMBER( Terminal ) : pass
+class PERCENTAGE( Terminal ) : pass
+class DIMENSION( Terminal ): pass
 class UNICODERANGE( Terminal ) : pass
+class DLIMIT( Terminal ) : pass
 
 class PLUS( Terminal ) : pass
 class GT( Terminal ) : pass
 class LT( Terminal ) : pass
+class TILDA( Terminal ) : pass
 class COMMA( Terminal ) : pass
 class COLON( Terminal ) : pass
 class MINUS( Terminal ) : pass
 class EQUAL( Terminal ) : pass
 class DOT( Terminal ) : pass
 class STAR( Terminal ) : pass
-class HASH( Terminal ) : pass
 class SEMICOLON( Terminal ) : pass
 class FWDSLASH( Terminal ) : pass
-class TILDA( Terminal ) : pass
-class DLIMIT( Terminal ) : pass
-
 class OPENBRACE( Terminal ) : pass
 class CLOSEBRACE( Terminal ) : pass
 class OPENSQR( Terminal ) : pass
@@ -1901,16 +1886,41 @@ class CLOSESQR( Terminal ) : pass
 class OPENPARAN( Terminal ) : pass
 class CLOSEPARAN( Terminal ) : pass
 
-class S( Terminal ) : pass
-class COMMENT( Terminal ) : pass
-
-class PERCENT( Terminal ) : pass
 class EXTN_EXPR( Terminal ) : pass
+class EXTN_STATEMENT( Terminal ) : pass
+class PERCENT( Terminal ) : pass
 class FUNCTIONSTART( Terminal ) : pass
 class FUNCTIONBODY( Terminal ) : pass
-class EXTN_STATEMENT( Terminal ) : pass
 class IFCONTROL( Terminal ) : pass
 class ELIFCONTROL( Terminal ) : pass
 class ELSECONTROL( Terminal ) : pass
 class FORCONTROL( Terminal ) : pass
 class WHILECONTROL( Terminal ) : pass
+
+# TODO : Why are these terminal here ?
+class HEXCOLOR( Terminal ) : pass
+class NAME( Terminal ) : pass
+class FUNCTIONEND( Terminal ) : pass
+
+#---------------------------- Terminal Literals --------------------------
+
+class Dimension( object ):
+    def __init__( self, value ):
+        self.value = value
+
+class Ems( Dimension ): pass
+class Exs( Dimension ): pass
+class LengthPX( Dimension ): pass
+class LengthCM( Dimension ): pass
+class LengthMM( Dimension ): pass
+class LengthIN( Dimension ): pass
+class LengthPT( Dimension ): pass
+class LengthPC( Dimension ): pass
+class AngleDEG( Dimension ): pass
+class AngleRAD( Dimension ): pass
+class AngleGRAD( Dimension ): pass
+class TimeMS( Dimension ): pass
+class TimeS( Dimension ): pass
+class FreqHZ( Dimension ): pass
+class FreqKHZ( Dimension ): pass
+class Percentage( Dimension ): pass

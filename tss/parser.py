@@ -7,9 +7,7 @@
 """Parser grammer for TSS Extension language"""
 
 # Gotcha : None
-#   1. Do not enable optimize for yacc-er. It optimizes the rules and the
-#      rule handler fails.
-#   2. To provide browser compliance, `operator` non-terminal can also have,
+#   1. To provide browser compliance, `operator` non-terminal can also have,
 #           colon, equal, dot, gt, ask
 #      like,
 #           filter : progid:DXImageTransform.Microsoft.gradient(
@@ -17,8 +15,6 @@
 #                       GradientType=0 )
 # Notes  :
 # Todo   : 
-#   1. CSS3 `media-queries` for atrules to be supported.
-#   2. *-prefix for property-name is not supported since IE7.
 
 import logging, re, sys, copy
 from   types        import StringType
@@ -31,6 +27,8 @@ from   tss.ast      import *
 
 log = logging.getLogger( __name__ )
 rootdir = dirname( __file__ )
+LEXTAB = 'lextsstab'
+YACCTAB = 'parsetsstab'
 
 class ParseError( Exception ):
     pass
@@ -39,99 +37,79 @@ class ParseError( Exception ):
 class TSSParser( object ):
 
     def __init__( self,
+                  tssconfig={},
                   outputdir='',
-                  lex_optimize=None,
-                  lextab='lextsstab',
                   lex_debug=None,
-                  yacc_optimize=None,
-                  yacctab='yacctsstab',
                   yacc_debug=None,
                   debug=None
                 ) :
         """
         Create a new TSSParser.
 
-        : outputdir ::
+        ``tssconfig``
+            All configurations related to tayra templates, are represented in
+            this object.
+
+        ``outputdir``
             To change the directory in which the parsetab.py file (and other
             output files) are written.
                         
-        : lex_optimize ::
-            PLY-Lexer option.
-            Set to False when you're modifying the lexer. Otherwise, changes
-            in the lexer won't be used, if some lextab.py file exists.
-            When releasing with a stable lexer, set to True to save the
-            re-generation of the lexer table on each run.
-            
-        : lextab ::
-            PLY-Lexer option.
-            Points to the lex table that's used for optimized mode. Only if
-            you're modifying the lexer and want some tests to avoid
-            re-generating the table, make this point to a local lex table file
-            (that's been earlier generated with lex_optimize=True)
-            
-        : lex_debug ::
+        ``lex_debug``
             PLY-Yacc option.
 
-        : yacc_optimize ::
-            PLY-Yacc option.
-            Set to False when you're modifying the parser. Otherwise, changes
-            in the parser won't be used, if some parsetab.py file exists.
-            When releasing with a stable parser, set to True to save the
-            re-generation of the parser table on each run.
-            
-        : yacctab ::
-            PLY-Yacc option.
-            Points to the yacc table that's used for optimized mode. Only if
-            you're modifying the parser, make this point to a local yacc table
-            file.
-                        
-        : yacc_debug ::
+        ``yacc_debug``
             Generate a parser.out file that explains how yacc built the parsing
             table from the grammar.
         """
-        self.tsslex = TSSLexer( error_func=self._lex_error_func )
-        kwargs = dict(filter(
-                    lambda x : x[1] != None,
-                    [ ('optimize', lex_optimize), ('debug', lex_debug) ]
-                 ))
-        self.tsslex.build( lextab=lextab, **kwargs )
-        self.tokens = self.tsslex.tokens
-        kwargs = dict(filter(
-                    lambda x : x[1] != None,
-                    [ ('optimize', yacc_optimize), ('debug', yacc_debug) ]
-                 ))
-        self.parser = ply.yacc.yacc( module=self, tabmodule=yacctab,
-                                     outputdir=outputdir, **kwargs
-                                   )
-        self.parser.tssparser = self     # For AST nodes to access `this`
         self.debug = lex_debug or yacc_debug or debug
+        optimize = tssconfig.get( 'parse_optimize', False )
+        lextab = tssconfig.get( 'lextab', LEXTAB ) or LEXTAB
+        yacctab = tssconfig.get( 'yacctab', YACCTAB ) or YACCTAB
+        # Build Lexer
+        self.tsslex = TSSLexer( error_func=self._lex_error_func )
+        kwargs = { 'optimize' : optimize } if optimize else {}
+        kwargs.update( debug=lex_debug )
+        kwargs.update( lextab=lextab ) if lextab else None
+        self.tsslex.build( **kwargs )
+        # Build Yaccer
+        kwargs = { 'optimize' : optimize } if optimize else {}
+        kwargs.update( debug=yacc_debug )
+        kwargs.update( outputdir=outputdir ) if outputdir else None
+        kwargs.update( tabmodule=yacctab )
+        self.parser = ply.yacc.yacc( module=self, **kwargs )
+        self.parser.tssparser = self        # For AST nodes to access `this`
+        # Parser initialization
+        self._tssconfig = tssconfig
         self._initialize()
 
     def _initialize( self ) :
-        pass
+        self.tssfile = tssfile
+        self.tssconfig = deepcopy( self._tssconfig )
+        self.tssconfig.update( tssconfig )
+        self.tsslex.reset_lineno()
 
-    def parse( self, text, filename='', debuglevel=0 ):
+    def parse( self, text, tssfile=None, tssconfig={}, debuglevel=0 ):
         """Parse TSS and creates an AST tree. For every
         parsing invocation, the same lex, yacc, app options and objects will
         be used.
 
-        : filename ::
+        ``filename``
             Name of the file being parsed (for meaningful error messages)
-        : debuglevel ::
+        ``debuglevel``
             Debug level to yacc
         """
+        # Parser Initialize
+        tssfile = tssfile if tssfile != None else self.tssfile
+        self._initialize( tssfile=tssfile, tssconfig=tssconfig )
+        self.tsslex.filename = self.tssfile = tssfile
 
-        # Initialize
-        self._initialize()
-        self.tsslex.filename = filename
-        self.tsslex.reset_lineno()
+        # parse and get the translation unit
         self.text = text
         self.hashtext = sha1( text ).hexdigest()
 
         # parse and get the Translation Unit
-        self.tu = self.parser.parse( self.text,
-                                     lexer=self.tsslex,
-                                     debug=debuglevel )
+        debuglevel = self.debug or debuglevel
+        self.tu = self.parser.parse( text, lexer=self.tsslex, debug=debuglevel )
         return self.tu
 
     # ------------------------- Private functions -----------------------------
@@ -140,10 +118,7 @@ class TSSParser( object ):
         self._parse_error( msg, self._coord( line, column ))
     
     def _coord( self, lineno, column=None ):
-        return Coord( file=self.tsslex.filename, 
-                      line=lineno,
-                      column=column
-               )
+        return Coord( file=self.tsslex.filename, line=lineno, column=column )
     
     def _parse_error(self, msg, coord):
         raise ParseError("%s: %s" % (coord, msg))
@@ -176,10 +151,7 @@ class TSSParser( object ):
 
     def p_tss( self, p ) :
         """tss          : stylesheets"""
-        if len(p) == 2 :
-            p[0] = Tss( p.parser, p[1] )
-        elif len(p) == 3 :
-            p[0] = Tss( p.parser, p[1] )
+        p[0] = Tss( p.parser, p[1] )
 
     def p_stylesheets_1( self, p ) :
         """stylesheets  : stylesheet"""
@@ -190,23 +162,50 @@ class TSSParser( object ):
         p[0] = StyleSheets( p.parser, p[1], p[2] )
 
     def p_stylesheet( self, p ) :
-        """stylesheet   : charset
+        """stylesheet   : cdatas
+                        | charset
                         | import
                         | namespace
-                        | statement
-                        | cdatas"""
+                        | statement"""
         p[0] = StyleSheet( p.parser, p[1] )
 
     def p_statement( self, p ) :
-        """statement    : rulesets
+        """statement    : page
+                        | font_face
                         | media
                         | atrule
-                        | page
-                        | font_face
+                        | rulesets
                         | functiondef
                         | extn_statement
                         | wc"""
         p[0] = Statement( p.parser, p[1] )
+
+    #---- CDATA
+
+    def p_cdatas( self, p ) :
+        """cdatas       : cdata
+                        | cdatas cdata"""
+        args = [ p[1], p[2] ] if len(p) == 3 else [ None,  p[1] ]
+        p[0] = Cdatas( p.parser, *args )
+
+    def p_cdata( self, p ) :
+        """cdata        : cdo cdc
+                        | cdo cdata_conts cdc"""
+        args = [ p[1], p[2], p[3] ] if len(p) == 4 else [ p[1], None, p[2] ]
+        p[0] = Cdata( p.parser, *args )
+
+    def p_cdata_conts( self, p ) :
+        """cdata_conts  : cdata_cont
+                        | cdata_conts cdata_cont"""
+        args = [ p[1], p[2] ] if len(p) == 3 else [ None, p[1] ]
+        p[0] = CdataConts( p.parser, *args )
+
+    def p_cdata_cont( self, p ) :
+        """cdata_cont   : expr
+                        | any
+                        | operator
+                        | block"""
+        p[0] = CdataCont( p.parser, p[1] )
 
     #---- @charset 
 
@@ -234,20 +233,39 @@ class TSSParser( object ):
         """namespace    : namespace_sym nmprefix string SEMICOLON
                         | namespace_sym nmprefix uri SEMICOLON
                         | namespace_sym nmprefix extn_expr SEMICOLON"""
-        x = SEMICOLON(p.parser, p[4])
-        p[0] = Namespace( p.parser, p[1], p[2], p[3], x )
+        p[0] = Namespace(p.parser, p[1], p[2], p[3], SEMICOLON(p.parser, p[4]))
 
     def p_namespace_2( self, p ) :
         """namespace    : namespace_sym string SEMICOLON
                         | namespace_sym uri SEMICOLON
                         | namespace_sym extn_expr SEMICOLON"""
-        x = SEMICOLON(p.parser, p[4])
-        p[0] = Namespace( p.parser, p[1], None, p[2], x )
+        p[0] = Namespace(p.parser, p[1], None, p[2], SEMICOLON(p.parser, p[4]))
 
     def p_nmprefix( self, p ) :
-        """nmprefix : ident
-                    | extn_expr"""
-        p[0] = Nameprefix( p.parser, p[1] )
+        """nmprefix     : ident
+                        | extn_expr"""
+        p[0] = NamePrefix( p.parser, p[1] )
+
+    #---- @page
+
+    def p_page_1( self, p ) :
+        """page         : page_sym IDENT pseudo_page block"""
+        p[0] = Page( p.parser, p[1], IDENT(p.parser, p[2]), p[3], p[4] )
+
+    def p_page_2( self, p ) :
+        """page         : page_sym ident block
+                        | page_sym pseudo_page block"""
+        p[0] = Page( p.parser, p[1], None, p[2], p[3] )
+
+    def p_pseudo_page( self, p ) :
+        """pseudo_page  : COLON ident"""
+        p[0] = PseudoPage( p.parser, COLON(p.parser, p[1]), p[2] )
+
+    #---- @font_face
+
+    def p_font_face( self, p ) :
+        """font_face    : font_face_sym block"""
+        p[0] = FontFace( p.parser, p[1], p[2] )
 
     #---- atrule
 
@@ -308,27 +326,6 @@ class TSSParser( object ):
         """medium       : expr
                         | any"""
         p[0] = Medium( p.parser, p[1] )
-
-    #---- page
-
-    def p_page_1( self, p ) :
-        """page         : page_sym IDENT pseudo_page block"""
-        p[0] = Page( p.parser, p[1], IDENT(p.parser, p[2]), p[3], p[4] )
-
-    def p_page_2( self, p ) :
-        """page         : page_sym ident block
-                        | page_sym pseudo_page block"""
-        p[0] = Page( p.parser, p[1], None, p[2], p[3] )
-
-    def p_pseudo_page( self, p ) :
-        """pseudo_page  : COLON ident"""
-        p[0] = PseudoPage( p.parser, COLON(p.parser, p[1]), p[2] )
-
-    #---- font_face
-
-    def p_font_face( self, p ) :
-        """font_face    : font_face_sym block"""
-        p[0] = FontFace( p.parser, p[1], p[2] )
 
     #---- ruleset
 
@@ -594,31 +591,6 @@ class TSSParser( object ):
                         | tilda"""
         p[0] = Combinator( p.parser, p[1] )
 
-    def p_cdatas( self, p ) :
-        """cdatas       : cdata
-                        | cdatas cdata"""
-        args = [ p[1], p[2] ] if len(p) == 3 else [ None,  p[1] ]
-        p[0] = Cdatas( p.parser, *args )
-
-    def p_cdata( self, p ) :
-        """cdata        : cdo cdc
-                        | cdo cdata_conts cdc"""
-        args = [ p[1], p[2], p[3] ] if len(p) == 4 else [ p[1], None, p[2] ]
-        p[0] = Cdata( p.parser, *args )
-
-    def p_cdata_conts( self, p ) :
-        """cdata_conts  : cdata_cont
-                        | cdata_conts cdata_cont"""
-        args = [ p[1], p[2] ] if len(p) == 3 else [ None, p[1] ]
-        p[0] = CdataConts( p.parser, *args )
-
-    def p_cdata_cont( self, p ) :
-        """cdata_cont   : expr
-                        | any
-                        | operator
-                        | block"""
-        p[0] = CdataCont( p.parser, p[1] )
-
     #---- Terminals with whitespace
 
     def p_charset_sym( self, p ) :
@@ -729,7 +701,7 @@ class TSSParser( object ):
     def p_dimension( self, p ) :
         """dimension    : DIMENSION wc
                         | DIMENSION"""
-        t = Dimension( p.parser, p[1] )
+        t = DIMENSION( p.parser, p[1] )
         wc = p[2] if len(p) == 3 else None
         p[0] = TerminalS( p.parser, t, wc )
 

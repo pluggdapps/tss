@@ -103,8 +103,8 @@ class TSSLexer( object ) :
     ## Tokens recognized by the TSSLexer
     tokens = (
         # Directives
-        'IMPORT_SYM', 'PAGE_SYM', 'MEDIA_SYM', 'FONT_FACE_SYM', 'CHARSET_SYM',
-        'NAMESPACE_SYM', 'IMPORTANT_SYM',
+        'CHARSET_SYM', 'IMPORT_SYM', 'NAMESPACE_SYM', 'PAGE_SYM', 'MEDIA_SYM',
+        'FONT_FACE_SYM', 'IMPORTANT_SYM',
         'ATKEYWORD',
 
         # Comments
