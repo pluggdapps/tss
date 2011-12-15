@@ -59,10 +59,6 @@ class Compiler( object ):
         module = imp.new_module( self.modulename )
         module.__dict__.update({
             self.igen.machname : _m,
-            'self'   : Namespace( None, module ),
-            'local'  : module,
-            'parent' : None,
-            'next'   : None,
         })
         module.__dict__.update( context )
         # Load tss translated python code
@@ -82,25 +78,24 @@ class Compiler( object ):
         pytext = self.tsslookup.pytext
         if pytext :
             tsshash = None
-            code = compile( pytext, self.ttlfile, 'exec' )
+            code = compile( pytext, self.tssfile, 'exec' )
         else :
-            pytext = self.topy( ttlhash=self.ttllookup.ttlhash )
-            self.ttllookup.pytext = pytext
-            code = compile( pytext, self.ttlfile, 'exec' )
+            pytext = self.topy( tsshash=self.tsslookup.tsshash )
+            self.tsslookup.pytext = pytext
+            code = compile( pytext, self.tssfile, 'exec' )
 
-        if self.ttlconfig['memcache'] :
-            self._memcache.setdefault( self.ttllookup.hashkey, code )
+        if self.tssconfig['memcache'] :
+            self._memcache.setdefault( self.tsslookup.hashkey, code )
         return code
 
     def toast( self ):
-        ttltext = self.ttllookup.ttltext
-        tu = self.ttlparser.parse( ttltext, ttlfile=self.ttlfile )
+        tsstext = self.tsslookup.tsstext
+        tu = self.tssparser.parse( tsstext, tssfile=self.tssfile )
         return tu
 
     def topy( self, *args, **kwargs ):
-        encoding = self.ttlconfig['input_encoding']
+        encoding = self.tssconfig['input_encoding']
         tu = self.toast()
-        ttltext = self.ttllookup.ttltext
         if tu :
             tu.validate()
             tu.headpass1( self.igen )                   # Head pass, phase 1
@@ -111,30 +106,30 @@ class Compiler( object ):
         else :
             return None
 
-    modulename = property(lambda s : basename( s.ttlfile ).split('.', 1)[0] )
+    modulename = property( lambda s : basename(s.tssfile).split('.',1)[0] )
 
 
 class StyleLookup( object ) :
-    TTLCONFIG = [ 'directories', 'module_directory', 'devmod' ]
-    def __init__( self, ttlloc=None, ttltext=None, ttlconfig={} ):
-        [ setattr( self, k, ttlconfig[k] ) for k in self.TTLCONFIG ]
-        self.ttlconfig = ttlconfig
-        self.encoding = ttlconfig['input_encoding']
-        self.ttlloc, self._ttltext = ttlloc, ttltext
-        self._ttlhash, self._pytext = None, None
-        if self.ttlloc :
-            self.ttlfile = self._locatettl( self.ttlloc, self.directories )
-            self.pyfile = self.computepyfile( ttlloc, ttlconfig )
-        elif self._ttltext :
-            self.ttlfile = '<Source provided as raw text>'
+    TSSCONFIG = [ 'directories', 'module_directory', 'devmod' ]
+    def __init__( self, tssloc=None, tsstext=None, tssconfig={} ):
+        [ setattr( self, k, tssconfig[k] ) for k in self.TSSCONFIG ]
+        self.tssconfig = tssconfig
+        self.encoding = tssconfig['input_encoding']
+        self.tssloc, self._tsstext = tssloc, tsstext
+        self._tsshash, self._pytext = None, None
+        if self.tssloc :
+            self.tssfile = self._locatetss( self.tssloc, self.directories )
+            self.pyfile = self.computepyfile( tssloc, tssconfig )
+        elif self._tsstext :
+            self.tssfile = '<Source provided as raw text>'
             self.pyfile = None
         else :
-            raise Exception( 'Invalid ttl source !!' )
+            raise Exception( 'Invalid tss source !!' )
 
-    def _getttltext( self ):
-        if self._ttltext == None :
-            self._ttltext = codecs.open( self.ttlfile, encoding=self.encoding ).read()
-        return self._ttltext
+    def _gettsstext( self ):
+        if self._tsstext == None :
+            self._tsstext = codecs.open( self.tssfile, encoding=self.encoding ).read()
+        return self._tsstext
 
     def _getpytext( self ):
         if self.devmod :
@@ -151,47 +146,47 @@ class StyleLookup( object ) :
             return len(pytext)
         return None
 
-    def _getttlhash( self ):
-        if self._ttlhash == None and self._ttltext :
-            self._ttlhash = sha1( self._ttltext ).hexdigest()
-        return self._ttlhash
+    def _gettsshash( self ):
+        if self._tsshash == None and self._tsstext :
+            self._tsshash = sha1( self._tsstext ).hexdigest()
+        return self._tsshash
 
     def _gethashkey( self ):
-        return self.ttlhash if self.ttlconfig['text_as_hashkey'] else self.ttlfile
+        return self.tsshash if self.tssconfig['text_as_hashkey'] else self.tssfile
 
-    def _locatettl( self, ttlloc, dirs ):
-        """TODO : can reordering the sequence of ttlloc interpretation improve
+    def _locatetss( self, tssloc, dirs ):
+        """TODO : can reordering the sequence of tssloc interpretation improve
         performance ?"""
-        # If ttlloc is relative to one of the template directories
-        files = filter( lambda f : isfile(f), [ join(d, ttlloc) for d in dirs ])
+        # If tssloc is relative to one of the template directories
+        files = filter( lambda f : isfile(f), [ join(d, tssloc) for d in dirs ])
         if files : return files[0]
 
-        # If ttlloc is provided in asset specification format
+        # If tssloc is provided in asset specification format
         try :
-            mod, loc = ttlloc.split(':', 1)
+            mod, loc = tssloc.split(':', 1)
             _file, path, _descr = imp.find_module( mod )
-            ttlfile = join( path.rstrip(os.sep), loc )
-            return ttlfile
+            tssfile = join( path.rstrip(os.sep), loc )
+            return tssfile
         except :
             return None
 
-        raise Exception( 'Error locating TTL file %r' % ttlloc )
+        raise Exception( 'Error locating tss file %r' % tssloc )
 
-    def computepyfile( self, ttlloc, ttlconfig ) :
+    def computepyfile( self, tssloc, tssconfig ) :
         """Plainly compute the intermediate file, whether it exists or not is
         immaterial.
         """
-        module_directory = ttlconfig['module_directory']
+        module_directory = tssconfig['module_directory']
         if module_directory :
-            ttlloc = ttlloc[1:] if ttlloc.startswith('/') else ttlloc
-            pyfile = join( module_directory, ttlloc+'.py' )
+            tssloc = tssloc[1:] if tssloc.startswith('/') else tssloc
+            pyfile = join( module_directory, tssloc+'.py' )
         else :
             pyfile = None
         return pyfile
 
-    ttltext = property( _getttltext )
+    tsstext = property( _gettsstext )
     pytext  = property( _getpytext, _setpytext )
-    ttlhash = property( _getttlhash )
+    tsshash = property( _gettsshash )
     hashkey = property( _gethashkey )
 
 

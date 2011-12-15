@@ -19,7 +19,6 @@ To walk throug the AST,
 # Todo   : None
 
 import sys, re
-from   hashlib          import sha1
 
 class ASTError( Exception ):
     pass
