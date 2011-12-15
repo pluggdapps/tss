@@ -43,7 +43,7 @@ class TSSLexer( object ) :
     def _find_tok_column( self, token ):
         i = token.lexpos
         while i > 0:
-            if self.lexer.lexdata[i] == '\n': break
+            if self.lexer.lexdata[i] == u'\n': break
             i -= 1
         return (token.lexpos - i) + 1
     
@@ -51,7 +51,7 @@ class TSSLexer( object ) :
         return ( token.lineno, self._find_tok_column(token) )
 
     def _incrlineno( self, token ) :
-        newlines = len( token.value.split('\n') ) - 1
+        newlines = len( token.value.split(u'\n') ) - 1
         if newlines > 0 : token.lexer.lineno += newlines
     
     def _preprocess( self, text ) :
@@ -371,6 +371,7 @@ class TSSLexer( object ) :
 
     @TOKEN( num + r'%' )
     def t_PERCENTAGE( self, t ) :
+        t.type = 'DIMENSION'
         t.value = Percentage(t.value)
         return t
 

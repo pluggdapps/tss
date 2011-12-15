@@ -94,8 +94,7 @@ class Node( object ):
         taken care."""
         return True
 
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         """ Pretty print the Node and all its attributes and children
         (recursively) to a buffer.
             
@@ -186,8 +185,7 @@ class Terminal( Node ) :
         return the same."""
         return self.terminal
 
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         """ Pretty print the Node and all its attributes and children
         (recursively) to a buffer.
             
@@ -258,856 +256,816 @@ class NonTerminal( Node ):      # Non-terminal
 
 # ------------------- Non-terminal classes ------------------------
 
-class Tss( Node ):
+class Tss( NonTerminal ):
     """class to handle `tss` grammar."""
 
     def __init__( self, parser, stylesheets ) :
-        Node.__init__( self, parser, stylesheets )
-        self.parser = parser
-        self.stylesheets = stylesheets
-        self._nonterms = (self.stylesheets,)
+        NonTerminal.__init__( self, parser, stylesheets )
+        self._nonterms = (self.stylesheets,) = (stylesheets,)
+        self._nonterms = filter( None, self._nonterms )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
+    def dump( self, context=None ):
+        c = context or Context()
+        return u''.join([ x.dump(c) for x in self.children() ])
 
-    def dump( self ) :
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + '-->tss: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+5, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+5, attrnames, showcoord) for x in self.children() ]
 
 
-class StyleSheets( Node ):
+class StyleSheets( NonTerminal ):
     """class to handle `stylesheets` grammar."""
 
     def __init__( self, parser, stylesheets, stylesheet ) :
-        Node.__init__( self, parser, stylesheets, stylesheet )
-        self.parser = parser
-        self._nonterms = self.stylesheets, self.stylesheet = \
-                            stylesheets, stylesheet
+        NonTerminal.__init__( self, parser, stylesheets, stylesheet )
+        self._nonterms = \
+                self.stylesheets, self.stylesheet = stylesheets, stylesheet
         self._nonterms = filter( None, self._nonterms )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
+    def dump( self, context ) :
+        return ''.join([ x.dump( context ) for x in self.flatten() ])
 
-    def dump( self ) :
-        # There is a potential danger is recursively calling dump() on the
-        # children(). Instead collect the list of stylesheet nodes a list and
-        # call dump() sequentially on them.
-        return ''.join([ c.dump() for c in self.sslist() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
-        [ c.show(buf, offset, attrnames, showcoord) for c in self.sslist() ]
+        [ x.show(buf, offset, attrnames, showcoord) for x in self.flatten() ]
 
-    def sslist( self ) :
-        node, l = self, []
-        while node :
-            l.append( node.stylesheet )
-            node = node.stylesheets
-        l.reverse()
-        return l
+    def flatten( self ) :
+        return NonTerminal.flatten( self, 'stylesheets', 'stylesheet' )
 
 
-
-class StyleSheet( Node ):
+class StyleSheet( NonTerminal ):
     """class to handle `stylesheet` grammar."""
 
-    def __init__( self, parser, rhs ) :
-        Node.__init__( self, parser, rhs )
-        self.parser = parser
-        self.rhs = rhs
-        self._nonterms = (self.rhs,)
+    def __init__( self, parser, nonterm ) :
+        NonTerminal.__init__( self, parser, nonterm )
+        self._nonterms = (self.nonterm,) = (nonterm,)
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ) :
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'stylesheet: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class Charset( Node ):
+class Statement( NonTerminal ):
+    """class to handle `statement` grammar."""
+
+    def __init__( self, parser, nonterm ) :
+        NonTerminal.__init__( self, parser, nonterm )
+        self._nonterms = (self.nonterm,) = (nonterm,)
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
+
+    def children( self ):
+        return self._nonterms
+
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
+        lead = ' ' * offset
+        buf.write( lead + 'statement: ' )
+        if showcoord:
+            buf.write( ' (at %s)' % self.coord )
+        buf.write('\n')
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
+
+
+#---- CDATA
+
+class Cdatas( NonTerminal ):
+    """class to handle `cdatas` grammar."""
+
+    def __init__( self, parser, cdatas, cdata ) :
+        NonTerminal.__init__( self, parser, cdatas, cdata )
+        self._nonterms = self.cdatas, self.cdata = cdatas, cdata
+        self._nonterms = filter( None, self._nonterms )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
+
+    def children( self ):
+        return self._nonterms
+
+    def dump( self, context ) :
+        return ''.join([ x.dump( context ) for x in self.flatten() ])
+
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
+        if showcoord:
+            buf.write( ' (at %s)' % self.coord )
+        [ x.show(buf, offset, attrnames, showcoord) for x in self.flatten() ]
+
+    def flatten( self ) :
+        return NonTerminal.flatten( self, 'cdatas', 'cdata' )
+
+
+class Cdata( NonTerminal ):
+    """class to handle `cdata` grammar."""
+
+    def __init__( self, parser, cdo, cdata_conts, cdc ) :
+        NonTerminal.__init__( self, parser, cdo, cdata_conts, cdc )
+        self._nonterms = \
+                self.cdo, self.cdata_conts, self.cdc = cdo, cdata_conts, cdc
+        self._nonterms = filter( None, self._nonterms )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
+
+    def children( self ):
+        return self._nonterms
+
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
+        lead = ' ' * offset
+        buf.write( lead + 'cdata: ' )
+        if showcoord:
+            buf.write( ' (at %s)' % self.coord )
+        buf.write('\n')
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
+
+
+class CdataConts( NonTerminal ):
+    """class to handle `cdata_conts` grammar."""
+
+    def __init__( self, parser, cdata_conts, cdata_cont ) :
+        NonTerminal.__init__( self, parser, cdata_conts, cdata_cont )
+        self._nonterms = \
+                self.cdata_conts, self.cdata_cont = cdata_conts, cdata_cont
+        self._nonterms = filter( None, self._nonterms )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
+
+    def children( self ):
+        return self._nonterms
+
+    def dump( self, context ):
+        return ''.join([ x.dump(context) for x in self.flatten() ])
+
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
+        if showcoord:
+            buf.write( ' (at %s)' % self.coord )
+        [ x.show(buf, offset, attrnames, showcoord) for x in self.flatten() ]
+
+    def flatten( self ) :
+        return NonTerminal.flatten( self, 'cdata_conts', 'cdata_cont' )
+
+
+class CdataCont( NonTerminal ):
+    """class to handle `cdata_cont` grammar."""
+
+    def __init__( self, parser, nonterm ) :
+        NonTerminal.__init__( self, parser, nonterm )
+        self._nonterms = (self.nonterm,) = (nonterm,)
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
+
+    def children( self ):
+        return self._nonterms
+
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
+        lead = ' ' * offset
+        buf.write( lead + 'cdata_cont: ' )
+        if showcoord:
+            buf.write( ' (at %s)' % self.coord )
+        buf.write('\n')
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
+
+
+#--- @Charset
+
+class Charset( NonTerminal ):
     """class to handle `charset` grammar."""
 
-    def __init__( self, parser, charset_sym, string, semi ) :
-        Node.__init__( self, parser, charset_sym, string, semi )
-        self.parser = parser
-        self.SEMICOLON = semi
-        self._nonterms = self.charset_sym, self.string = charset_sym, string
-        self._terms = (self.SEMICOLON,)
+    def __init__( self, parser, charset_sym, nonterm, semi ) :
+        NonTerminal.__init__( self, parser, charset_sym, nonterm, semi )
+        self._nonterms = self.charset_sym, self.nonterm = charset_sym, nonterm
+        self._terms = (self.SEMICOLON,) = (semi,)
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms + self._terms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'charset: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class Import( Node ) :
+#---- @Import
+
+class Import( NonTerminal ) :
     """class to handle `import` grammar."""
 
-    def __init__( self, parser, import_sym, str_uri, mediums, semi ) :
-        Node.__init__( self, parser, import_sym, str_uri, mediums, semi )
-        self.parser = parser
-        self.SEMICOLON = semi
-        self._nonterms = self.import_sym, self.str_uri, self.mediums = \
-                import_sym, str_uri, mediums
+    def __init__( self, parser, import_sym, nonterm, mediums, semi ) :
+        NonTerminal.__init__( self, parser, import_sym, nonterm, mediums, semi )
+        self._nonterms = \
+            self.import_sym, self.nonterm, self.mediums = \
+                import_sym, nonterm, mediums
         self._nonterms = filter( None, self._nonterms )
-        self._terms = (self.SEMICOLON,)
+        self._terms = (self.SEMICOLON,) = (semi,)
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ) :
         return self._nonterms + self._terms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'import: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class Namespace( Node ):
+#---- @namespace
+
+class Namespace( NonTerminal ):
     """class to handle `namespace` grammar."""
 
-    def __init__( self, parser, namespace_sym, prefix, str_uri, semi ) :
-        Node.__init__( self, parser, namespace_sym, prefix, str_uri, semi )
-        self.parser = parser
-        self.SEMICOLON = semi
-        self._nonterms = self.namespace_sym, self.prefix, self.str_uri = \
-                namespace_sym, prefix, str_uri
-        self._terms = (self.SEMICOLON,)
+    def __init__( self, parser, namespace_sym, prefix, nonterm, semi ) :
+        NonTerminal.__init__( self, parser, namespace_sym, prefix, nonterm, semi )
+        self._nonterms = \
+            self.namespace_sym, self.prefix, self.nonterm = \
+                namespace_sym, prefix, nonterm
+        self._nonterms = filter( None, self._nonterms )
+        self._terms = (self.SEMICOLON,) = (semi,)
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
-        return ( self.namespace_sym, self.prefix, self.str_uri, self.SEMICOLON )
+        return ( self.namespace_sym, self.prefix, self.nonterm, self.SEMICOLON )
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'namespace: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class NamePrefix( Node ) :
+class NamePrefix( NonTerminal ) :
     """class to handle `nmprefix` grammar."""
 
-    def __init__( self, parser, ident ) :
-        Node.__init__( self, parser, ident )
-        self.parser = parser
-        self.ident = ident
-        self._nonterms = (self.ident,)
+    def __init__( self, parser, nonterm ) :
+        NonTerminal.__init__( self, parser, nonterm )
+        self._nonterms = (self.nonterm,) = (nonterm,)
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
-        txt = ''.join([ x.dump() for x in self.selectorlist() ])
+        txt = ''.join([ x.dump(context) for x in self.selectorlist() ])
         buf.write( lead + 'nmprefix: %r' % txt )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
 
 
-class Statement( Node ):
-    """class to handle `statement` grammar."""
+#---- @page
 
-    def __init__( self, parser, rhs ) :
-        Node.__init__( self, parser, rhs )
-        self.parser = parser
-        self.rhs = rhs
-        self._nonterms = ( self.rhs, )
-
-    def children( self ):
-        return self._nonterms
-
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
-        lead = ' ' * offset
-        buf.write( lead + 'statement: ' )
-        if showcoord:
-            buf.write( ' (at %s)' % self.coord )
-        buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
-
-
-class Media( Node ):
-    """class to handle `media` grammar."""
-
-    def __init__( self, parser, media_sym, mediums, obrace, rulesets, cbrace ) :
-        Node.__init__( self, parser, media_sym, mediums, obrace, rulesets, cbrace )
-        self.parser = parser
-        self.CLOSEBRACE = cbrace
-        self._terms = ( self.CLOSEBRACE, )
-        self._nonterms = \
-            self.media_sym, self.mediums, self.openbrace, self.rulesets = \
-                media_sym, mediums, obrace, rulesets
-        self._nonterms = filter( None, self._nonterms )
-
-    def children( self ) :
-        x = [ self.media_sym, self.mediums, self.openbrace, self.rulesets,
-              self.CLOSEBRACE ]
-        return filter( None, x )
-
-    def tohtml( self ) :
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
-        lead = ' ' * offset
-        buf.write( lead + 'media: ' )
-        if showcoord:
-            buf.write( ' (at %s)' % self.coord )
-        buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
-
-
-class Mediums( Node ):
-    """class to handle `mediums` grammar."""
-
-    def __init__( self, parser, mediums, comma, medium ) :
-        Node.__init__( self, parser, mediums, comma, medium )
-        self.parser = parser
-        self._nonterms = self.mediums, self.comma, self.medium = \
-                mediums, comma, medium
-        self._nonterms = filter( None, self._nonterms )
-
-    def children( self ):
-        return self._nonterms
-
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
-        lead = ' ' * offset
-        buf.write( lead + 'mediums: ' )
-        if showcoord:
-            buf.write( ' (at %s)' % self.coord )
-        buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
-
-
-class Medium( Node ) :
-    """class to handle `medium` grammar."""
-
-    def __init__( self, parser, nonterm ) :
-        Node.__init__( self, parser, nonterm )
-        self.parser = parser
-        self.nonterm = nonterm
-        self._nonterms = ( self.nonterm, )
-
-    def children( self ) :
-        return self._nonterms
-
-    def tohtml( self ) :
-        pass
-
-    def dump( self ) :
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ) :
-        lead = ' ' * offset
-        buf.write( lead + 'medium: ' )
-        if showcoord:
-            buf.write( ' (at %s)' % self.coord )
-        buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
-
-
-class Page( Node ) :
+class Page( NonTerminal ) :
     """class to handle `page` grammar."""
 
-    def __init__( self, parser, page_sym, ident, nonterm, block ) :
-        Node.__init__( self, parser, page_sym, ident, nonterm, block )
-        self.parser = parser
-        self._nonterms = self.page_sym, self.nonterm, self.block = \
-                page_sym, nonterm, block
-        self.IDENT = ident
-        if self.IDENt : self._terms = (self.IDENT,)
+    def __init__( self, parser, page_sym, ident, pseudo_page, block ) :
+        NonTerminal.__init__( self, parser, page_sym, ident, pseudo_page, block )
+        self.page_sym, self.pseudo_page, self.block = page_sym, pseudo_page, block
+        if ident and isinstance( ident, IDENT ) :
+            self.IDENT, self.ident = ident, None
+        elif ident and isinstance( ident, TerminalS ) :
+            self.IDENT, self.ident = None, ident
+        self._nonterms = filter(
+            None, self.page_sym, self.ident, self.pseudo_page, self.block
+        )
+        self._terms = filter( None, (self.IDENT,) )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ) :
-        x = (self.page_sym, self.IDENT, self.nonterm, self.block)
-        return filter(None, x)
+        x = (self.page_sym, self.IDENT, self.ident, self.pseudo_page, self.block)
+        return filter( None, x )
 
-    def tohtml( self ) :
-        pass
-
-    def dump( self ) :
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ) :
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False) :
         lead = ' ' * offset
         buf.write( lead + 'page: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-#class PseudoPage( Node ) :
-#    """class to handle `pseudo_page` grammar."""
-#
-#    def __init__( self, parser, colon, ident ) :
-#        Node.__init__( self, parser, colon, ident )
-#        self.parser = parser
-#        self.COLON, self.ident = colon, ident
-#        self._terms = (self.COLON,)
-#        self._nonterms = (self.ident,)
-#
-#    def children( self ) :
-#        return (self.COLON, self.ident)
-#
-#    def tohtml( self ) :
-#        pass
-#
-#    def dump( self ) :
-#        return ''.join([ c.dump() for c in self.children() ])
-#
-#    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-#              showcoord=False ) :
-#        lead = ' ' * offset
-#        buf.write( lead + 'pseudo_page: ' )
-#        if showcoord:
-#            buf.write( ' (at %s)' % self.coord )
-#        buf.write('\n')
-#        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+class PseudoPage( NonTerminal ) :
+    """class to handle `pseudo_page` grammar."""
+
+    def __init__( self, parser, colon, ident ) :
+        NonTerminal.__init__( self, parser, colon, ident )
+        self._nonterms = (self.ident,) = (ident,)
+        self._terms = (self.COLON,) = (colon,)
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
+
+    def children( self ) :
+        return (self.COLON, self.ident)
+
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
+        lead = ' ' * offset
+        buf.write( lead + 'pseudo_page: ' )
+        if showcoord:
+            buf.write( ' (at %s)' % self.coord )
+        buf.write('\n')
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class FontFace( Node ) :
+#---- @font_face
+
+class FontFace( NonTerminal ) :
     """class to handle `font_face` grammar."""
 
     def __init__( self, parser, font_face_sym, block ) :
-        Node.__init__( self, parser, font_face_sym, block )
-        self.parser = parser
+        NonTerminal.__init__( self, parser, font_face_sym, block )
         self._nonterms = self.font_face_sym, self.block = font_face_sym, block
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'font_face: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class AtRule( Node ) :
-    """class to handle `atrule` grammar."""
+#---- @media
 
-    def __init__( self, parser, atkeyword, expr=None, block=None,
-                  semicolon=None, obrace=None, rulesets=None, cbrace=None ) :
-        Node.__init__( self, parser, atkeyword )
-        self.parser = parser
-        self._terms = self.SEMICOLON, self.CLOSEBRACE = semicolon, cbrace
+class Media( NonTerminal ):
+    """class to handle `media` grammar."""
+
+    def __init__( self, parser, media_sym, mediums, block ) :
+        NonTerminal.__init__( self, parser, media_sym, mediums, block )
         self._nonterms = \
-            self.atkeyword, self.expr, self.block, self.obrace, self.rulesets =\
-                atkeyword, expr, block, obrace, rulesets
+            self.media_sym, self.mediums, self.block = media_sym, mediums, block
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
+
+    def children( self ) :
+        return self._nonterms
+
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
+        lead = ' ' * offset
+        buf.write( lead + 'media: ' )
+        if showcoord:
+            buf.write( ' (at %s)' % self.coord )
+        buf.write('\n')
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
+
+
+class Mediums( NonTerminal ):
+    """class to handle `mediums` grammar."""
+
+    def __init__( self, parser, mediums, comma, medium ) :
+        NonTerminal.__init__( self, parser, mediums, comma, medium )
+        self._nonterms = \
+                self.mediums, self.comma, self.medium = mediums, comma, medium
         self._nonterms = filter( None, self._nonterms )
-        self._terms = filter( None, self._terms )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
-        return self._nonterms + self._terms
+        return self._nonterms
 
-    def tohtml( self ):
-        pass
+    def dump( self, context ):
+        return ''.join([ x.dump(context) for x in self.flatten() ])
 
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
+        if showcoord:
+            buf.write( ' (at %s)' % self.coord )
+        [ x.show(buf, offset, attrnames, showcoord) for x in self.flatten() ]
 
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def flatten( self ) :
+        return NonTerminal.flatten( self, 'mediums', ('medium', 'comma') )
+
+
+class Medium( NonTerminal ) :
+    """class to handle `medium` grammar."""
+
+    def __init__( self, parser, nonterm ) :
+        NonTerminal.__init__( self, parser, nonterm )
+        self._nonterms = (self.nonterm,) = (nonterm,)
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
+
+    def children( self ) :
+        return self._nonterms
+
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
+        lead = ' ' * offset
+        buf.write( lead + 'medium: ' )
+        if showcoord:
+            buf.write( ' (at %s)' % self.coord )
+        buf.write('\n')
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
+
+
+class AtRule( NonTerminal ) :
+    """class to handle `atrule` grammar."""
+
+    def __init__( self, parser, atkeyword, expr, semi, block ) :
+        NonTerminal.__init__( self, parser, atkeyword, expr, semi, block )
+        self._nonterms = \
+            self.atkeyword, self.expr, self.block = atkeyword, expr, block
+        self._nonterms = filter( None, self._nonterms )
+        self._terms = (self.SEMICOLON,) = (semi,)
+        self._terms = filter( None, self._terms )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
+
+    def children( self ):
+        return filter(
+            None, (self.atkeyword, self.expr, self.SEMICOLON, self.block) )
+
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'atrule: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class RuleSets( Node ):
+#---- Rulesets
+
+class RuleSets( NonTerminal ):
     """class to handle `rulesets` grammar."""
 
     def __init__( self, parser, rulesets, ruleset ) :
-        Node.__init__( self, parser, rulesets, ruleset )
-        self.parser = parser
+        NonTerminal.__init__( self, parser, rulesets, ruleset )
         self._nonterms = self.rulesets, self.ruleset = rulesets, ruleset
         self._nonterms = filter( None, self._nonterms )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
+    def dump( self, context ):
+        return ''.join([ x.dump(context) for x in self.flatten() ])
 
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.rsetlist() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
-        lead = ' ' * offset
-        buf.write( lead + 'rulesets: ' )
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
-        buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.rsetlist() ]
+        [ x.show(buf, offset, attrnames, showcoord) for x in self.flatten() ]
 
-    def rsetlist( self ) :
-        node, l = self, []
-        while node :
-            l.append( node.ruleset )
-            node = node.rulesets
-        l.reverse()
-        return l
+    def flatten( self ) :
+        return NonTerminal.flatten( self, 'rulesets', 'ruleset' )
 
 
-
-class RuleSet( Node ):
+class RuleSet( NonTerminal ):
     """class to handle `ruleset` grammar."""
 
-    def __init__( self, parser, *args, **kwargs ) :
-        Node.__init__( self, parser, *args, **kwargs )
-        self.parser = parser
-        self.namespace_ext = kwargs.get( 'namespace_ext', None )
-        if self.namespace_ext == True :
-            self.PERCENT = args[0]
-            self.ident, self.expr, self.block = args[1:]
+    def __init__( self, parser, selectors, block, namespace_ext ) :
+        NonTerminal.__init__( self, parser, selectors, block , namespace_ext )
+        if namespace_ext :
+            self.PERCENT, self.ident, self.expr, self.block = namespace_ext
             self._terms = (self.PERCENT,)
-            self._nonterms = self.ident, self.expr, self.block
+            self._nonterms = filter( None, (self.ident, self.expr, self.block) )
         else :
-            self._nonterms = self.selectors, self.block = args[0], args[1]
+            self._nonterms = self.selectors, self.block = selectors, block
             self._nonterms = filter( None, self._nonterms )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
+
 
     def children( self ):
-        if self.namespace_ext :
-            return self._terms + self._nonterms
+        if self._terms :
+            return filter(None, (self.PERCENT,self.ident,self.expr,self.block))
         else :
-            return self._nonterms
+            return filter( None, (self.selectors, self.block) )
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'ruleset: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class Selectors( Node ):
+class Selectors( NonTerminal ):
     """class to handle `selectors` grammar."""
 
     def __init__( self, parser, selectors, comma, selector ) :
-        Node.__init__( self, parser, selectors, comma, selector )
-        self.parser = parser
-        self._nonterms = self.selectors, self.comma, self.selector = \
-                selectors, comma, selector
+        NonTerminal.__init__( self, parser, selectors, comma, selector )
+        self._nonterms = \
+            self.selectors,self.comma,self.selector = selectors,comma,selector
         self._nonterms = filter( None, self._nonterms )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
+    def dump( self, context ):
+        return ''.join([ x.dump(context) for x in self.flatten() ])
 
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
-        lead = ' ' * offset
-        buf.write( lead + 'selectors: ' )
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
-        buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset, attrnames, showcoord) for x in self.flatten() ]
+
+    def flatten( self ) :
+        return NonTerminal.flatten( self, 'selectors', ('selector', 'comma') )
 
 
-class Selector( Node ):
+class Selector( NonTerminal ):
     """class to handle `selector` grammar."""
 
     def __init__( self, parser, selector, combinator, simple_selector ) :
-        Node.__init__( self, parser, selector, combinator, simple_selector )
-        self.parser = parser
-        self._nonterms = self.selector, self.combinator, self.simple_selector= \
-                    selector, combinator, simple_selector
+        NonTerminal.__init__( self, parser, selector, combinator, simple_selector )
+        self._nonterms = \
+            self.selector, self.combinator, self.simple_selector= \
+                selector, combinator, simple_selector
         self._nonterms = filter( None, self._nonterms )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
+    def dump( self, context ):
+        return ''.join([ x.dump(context) for x in self.flatten() ])
 
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
-        lead = ' ' * offset
-        buf.write( lead + 'selector: ' )
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
-        buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset, attrnames, showcoord) for x in self.flatten() ]
+
+    def flatten( self ) :
+        return NonTerminal.flatten( self, 'selector', ('simple_selector', 'combinator') )
 
 
-class SimpleSelector( Node ):
+class SimpleSelector( NonTerminal ):
     """class to handle `simple_selector` grammar."""
 
-    def __init__( self, parser, simple_selector, elemname, extender ) :
-        Node.__init__( self, parser, simple_selector, elemname, extender )
-        self.parser = parser
-        self._nonterms = self.simple_selector, self.element_name, self.extender = \
-                simple_selector, elemname, extender
+    def __init__(self, parser, simple_selector, elemname, extender, extn_expr):
+        NonTerminal.__init__(
+            self, parser, simple_selector, elemname, extender, extn_expr )
+        self._nonterms = \
+            self.simple_selector, self.elemname, self.extender, self.extn_expr=\
+                simple_selector, elemname, extender, extn_expr
         self._nonterms = filter( None, self._nonterms )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'simple_selector: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class ElementName( Node ):
+class ElementName( NonTerminal ):
     """class to handle `element_name` grammar."""
 
-    def __init__( self, parser, nonterm ) :
-        Node.__init__( self, parser, nonterm )
-        self.parser = parser
-        self.nonterm = nonterm
-        self._nonterms = ( self.nonterm, )
+    def __init__( self, parser, nonterm, dlimit ) :
+        NonTerminal.__init__( self, parser, nonterm, dlimit )
+        self._nonterms = (self.nonterm,) = (nonterm,)
+        self._nonterms = filter( None, self._nonterms )
+        self._terms = (self.DLIMIT,) = (dlimit,)
+        self._terms = filter( None, self._terms )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'element_name: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class Extender( Node ):
-    """class to handle `extender` grammar."""
+class Combinator( NonTerminal ):
+    """class to handle `combinator` grammar."""
 
-    def __init__( self, parser, rhs ) :
-        Node.__init__( self, parser, rhs )
-        self.parser = parser
-        self.rhs = rhs
-        self._nonterms = ( self.rhs, )
+    def __init__( self, parser, nonterm ) :
+        NonTerminal.__init__( self, parser, nonterm )
+        self._nonterms = (self.nonterm,) = (nonterm,)
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
+        lead = ' ' * offset
+        buf.write( lead + 'combinator: ' )
+        if showcoord:
+            buf.write( ' (at %s)' % self.coord )
+        buf.write('\n')
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
 
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+class Extender( NonTerminal ):
+    """class to handle `extender` grammar."""
+
+    def __init__( self, parser, nonterm ) :
+        NonTerminal.__init__( self, parser, nonterm )
+        self._nonterms = (self.nonterm,) = (nonterm,)
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
+
+    def children( self ):
+        return self._nonterms
+
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'extender: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class Class( Node ):
+class Class( NonTerminal ):
     """class to handle `class` grammar."""
 
     def __init__( self, parser, dot, ident, wc ) :
-        Node.__init__( self, parser, dot, ident, wc )
-        self.parser = parser
-        self.DOT, self.IDENT, self.wc = dot, ident, wc
-        self._terms = (self.DOT, self.IDENT)
-        if self.wc :
-            self._nonterms = (self.wc,)
+        NonTerminal.__init__( self, parser, dot, ident, wc )
+        self._nonterms = (self.wc,) = (wc,)
+        self._nonterms = filter( None, self._nonterms )
+        self._terms = self.DOT, self.IDENT = dot, ident
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._terms + self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'class: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class Attrib( Node ) :
+class Attrib( NonTerminal ) :
     """class to handle `attrib` grammar."""
 
     def __init__( self, parser, osqr, ident, attroper, attrval, csqr ) :
-        Node.__init__( self, parser, osqr, ident, attroper, attrval, csqr )
-        self.parser = parser
+        NonTerminal.__init__(
+                self, parser, osqr, ident, attroper, attrval, csqr )
         self._nonterms = \
             self.opensqr, self.ident, self.attroper, self.attrval, self.closesqr = \
                 osqr, ident, attroper, attrval, csqr
         self._nonterms = filter( None, self._nonterms )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'attrib: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class AttrOper( Node ):
+class AttrOper( NonTerminal ):
     """class to handle `attr_oper` grammar."""
 
-    def __init__( self, parser, rhs ) :
-        Node.__init__( self, parser, rhs )
-        self.parser = parser
-        self.rhs = rhs
-        self._nonterms = ( self.rhs, )
+    def __init__( self, parser, nonterm ) :
+        NonTerminal.__init__( self, parser, nonterm )
+        self._nonterms = (self.nonterm,) = (nonterm,)
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'attr_oper: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class AttrVal( Node ):
+class AttrVal( NonTerminal ):
     """class to handle `attr_val` grammar."""
 
-    def __init__( self, parser, rhs ) :
-        Node.__init__( self, parser, rhs )
-        self.parser = parser
-        self.rhs = rhs
-        self._nonterms = ( self.rhs, )
+    def __init__( self, parser, nonterm ) :
+        NonTerminal.__init__( self, parser, nonterm )
+        self._nonterms = (self.nonterm,) = (nonterm,)
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'attr_val: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class Pseudo( Node ):
+class Pseudo( NonTerminal ):
     """class to handle `pseudo` grammar."""
 
     def __init__( self, parser, colon1, colon2, pseudo_name ) :
-        Node.__init__( self, parser, colon1, colon2, pseudo_name )
-        self.parser = parser
+        NonTerminal.__init__( self, parser, colon1, colon2, pseudo_name )
+        self._nonterms = (self.pseudo_name,) = (pseudo_name,)
         self._terms = self.COLON1, self.COLON2 = colon1, colon2
         self._terms = filter( None, self._terms )
-        self.pseudo_name = pseudo_name
-        self._nonterms = ( self.pseudo_name, )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._terms + self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'pseudo: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class PseudoName( Node ):
+class PseudoName( NonTerminal ):
     """class to handle `pseudo_name` grammar."""
 
-    def __init__( self, parser, function, ident, cparan ) :
-        Node.__init__( self, parser, function, ident, cparan )
-        self.parser = parser
-        self._nonterms = self.function, self.ident, self.closeparan = \
-                function, ident, cparan
+    def __init__( self, parser, ident, function, nonterm, cparan ) :
+        NonTerminal.__init__( self, parser, ident, function, nonterm, cparan )
+        self._nonterms = \
+            self.ident, self.function, self.nonterm, self.closeparan = \
+                ident, function, nonterm, cparan
         self._nonterms = filter( None, self._nonterms )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'pseudo_name: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-#class Blocks( Node ):
+#---- Blocks
+
+#class Blocks( NonTerminal ):
 #    """class to handle `blocks` grammar."""
 #
 #    def __init__( self, parser, blocks, block ) :
-#        Node.__init__( self, parser, blocks, block )
-#        self.parser = parser
+#        NonTerminal.__init__( self, parser, blocks, block )
 #        self._nonterms = self.blocks, self.block = blocks, block
 #        self._nonterms = filter( None, self._nonterms )
 #
@@ -1117,677 +1075,424 @@ class PseudoName( Node ):
 #    def tohtml( self ):
 #        pass
 #
-#    def dump( self ):
-#        return ''.join([ c.dump() for c in self.children() ])
+#   def dump( self, context ):
+#        return ''.join([ x.dump(context) for x in self.children() ])
 #
-#    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-#              showcoord=False ):
+#    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
 #        lead = ' ' * offset
 #        buf.write( lead + 'blocks: ' )
 #        if showcoord:
 #            buf.write( ' (at %s)' % self.coord )
 #        buf.write('\n')
-#        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+#        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class Block( Node ):
+class Block( NonTerminal ):
     """class to handle `block` grammar."""
 
     def __init__( self, parser, obrace, declarations, cbrace ) :
-        Node.__init__( self, parser, obrace, declarations, cbrace )
-        self.parser = parser
-        self._nonterms = self.openbrace, self.declarations, self.closebrace = \
+        NonTerminal.__init__( self, parser, obrace, declarations, cbrace )
+        self._nonterms = \
+            self.openbrace, self.declarations, self.closebrace = \
                 obrace, declarations, cbrace
         self._nonterms = filter( None, self._nonterms )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'block: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class Declarations( Node ):
+class Declarations( NonTerminal ):
     """class to handle `declarations` grammar."""
 
-    def __init__( self, parser, declarations, semi, declaration ) :
-        Node.__init__( self, parser, declarations, semi, declaration )
-        self.parser = parser
-        self._nonterms = self.declarations, self.semicolon, self.declaration = \
-                declarations, semi, declaration
+    def __init__( self, parser, declarations, semi, nonterm ) :
+        NonTerminal.__init__( self, parser, declarations, semi, nonterm )
+        self._nonterms = \
+            self.declarations, self.semicolon, self.nonterm = \
+                declarations, semi, nonterm
         self._nonterms = filter( None, self._nonterms )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
+    def dump( self, context ):
+        return ''.join([ x.dump(context) for x in self.flatten() ])
 
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
-        lead = ' ' * offset
-        buf.write( lead + 'declarations: ' )
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
-        buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset, attrnames, showcoord) for x in self.flatten() ]
+
+    def flatten( self ) :
+        return NonTerminal.flatten( self, 'declarations', ('nonterm', 'semicolon') )
 
 
-class Declaration( Node ):
+class Declaration( NonTerminal ):
     """class to handle `declaration` grammar."""
 
-    def __init__( self, parser, prefix, ident, colon, expr, prio ) :
-        Node.__init__( self, parser, prefix, ident, colon, expr, prio )
-        self.parser = parser
+    def __init__( self, parser, prefix, extn_expr, ident, colon, expr, prio ) :
+        NonTerminal.__init__(
+                self, parser, prefix, extn_expr, ident, colon, expr, prio )
         self._nonterms = \
-            self.prefix, self.ident, self.colon, self.expr, self.prio = \
-                prefix, ident, colon, expr, prio
+            self.prefix, self.extn_expr, self.ident, self.colon, self.expr, self.prio = \
+                prefix, extn_expr, ident, colon, expr, prio
         self._nonterms = filter( None, self._nonterms )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'declaration: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class Property( Node ):
-    """class to handle `property` grammar."""
-
-    def __init__( self, parser, prefix, ident ) :
-        Node.__init__( self, parser, prefix, ident )
-        self.parser = parser
-        self._nonterms = self.prefix, self.ident = prefix, ident
-        self._nonterms = filter( None, self._nonterms )
-
-    def children( self ):
-        return self._nonterms
-
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
-        lead = ' ' * offset
-        buf.write( lead + 'property: ' )
-        if showcoord:
-            buf.write( ' (at %s)' % self.coord )
-        buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
-
-
-class Priority( Node ):
+class Priority( NonTerminal ):
     """class to handle `prio` grammar."""
 
     def __init__( self, parser, important_sym ) :
-        Node.__init__( self, parser, important_sym )
-        self.parser = parser
-        self.important_sym = important_sym
-        self._nonterms = ( self.important_sym, )
+        NonTerminal.__init__( self, parser, important_sym )
+        self._nonterms = (self.important_sym,) = (important_sym,)
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'prio: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class Expr( Node ):
+#---- Expressions
+
+class Expr( NonTerminal ):
     """class to handle `expr` grammar."""
 
     def __init__( self, parser, expr, binaryexpr ) :
-        Node.__init__( self, parser, expr, binaryexpr )
-        self.parser = parser
+        NonTerminal.__init__( self, parser, expr, binaryexpr )
         self._nonterms = self.expr, self.binaryexpr = expr, binaryexpr
         self._nonterms = filter( None, self._nonterms )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
+    def dump( self, context ):
+        return ''.join([ x.dump(context) for x in self.flatten() ])
 
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
-        lead = ' ' * offset
-        buf.write( lead + 'expr: ' )
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
-        buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset, attrnames, showcoord) for x in self.flatten() ]
+
+    def flatten( self ) :
+        return NonTerminal.flatten( self, 'expr', 'binaryexpr' )
 
 
-class BinaryExpr( Node ):
+# Gotcha : There is a possibility of deep recursion here, although for
+# practical inputs, it may not happen.
+
+class BinaryExpr( NonTerminal ):
     """class to handle `binaryexpr` grammar."""
 
-    def __init__( self, parser, binaryexpr1, op, binaryexpr2, item ) :
-        Node.__init__( self, parser )
-        self.parser = parser
+    def __init__( self, parser, nonterm, binaryexpr1, op, binaryexpr2 ) :
+        NonTerminal.__init__( self, parser )
         self._nonterms = \
-            self.binaryexpr1, self.operator, self.binaryexpr2, self.item = \
-                binaryexpr1, op, binaryexpr2, item
+            self.nonterm, self.binaryexpr1, self.operator, self.binaryexpr2 = \
+                nonterm, binaryexpr1, op, binaryexpr2
         self._nonterms = filter( None, self._nonterms )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'binaryexpr: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class UnaryExpr( Node ):
+# Gotcha : This node can make an indirect recursive call to expr, hence end up
+# in deep recursion
+
+class UnaryExpr( NonTerminal ):
     """class to handle `unaryexpr` grammar."""
 
     def __init__( self, parser, unaryop, term_val, paran_expr ) :
-        Node.__init__( self, parser, unaryop, term_val )
-        self.parser = parser
+        NonTerminal.__init__( self, parser, unaryop, term_val )
         if paran_expr :
-            self.openparan, self.expr, self.closeparan = paran_expr
-            self._nonterms = paran_expr
+            self._nonterms=self.openparan,self.expr,self.closeparan=paran_expr
         else :
             self._nonterms = self.unaryop, self.term_val = unaryop, term_val
-        self._nonterms = filter( None, self._nonterms )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'unaryexpr: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class Term( Node ):
+class Term( NonTerminal ):
     """class to handle `term` grammar."""
 
-    def __init__( self, parser, rhs ) :
-        Node.__init__( self, parser, rhs )
-        self.parser = parser
-        self.rhs = rhs
-        self._nonterms = (self.rhs,)
+    def __init__( self, parser, nonterm ) :
+        NonTerminal.__init__( self, parser, nonterm )
+        self._nonterms = (self.nonterm,) = (nonterm,)
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'term: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class TermVal( Node ):
+class TermVal( NonTerminal ):
     """class to handle `term_val` grammar."""
 
-    def __init__( self, parser, rhs ) :
-        Node.__init__( self, parser, rhs )
-        self.parser = parser
-        self.rhs = rhs
-        self._nonterms = (self.rhs,)
+    def __init__( self, parser, nonterm ) :
+        NonTerminal.__init__( self, parser, nonterm )
+        self._nonterms = (self.nonterm,) = (nonterm,)
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'term_val: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class FuncCall( Node ):
+# Gotcha : This node can make an indirect recursive call to expr, hence end up
+# in deep recursion
+
+class FuncCall( NonTerminal ):
     """class to handle `func_call` grammar."""
 
     def __init__( self, parser, function, expr, closeparan ) :
-        Node.__init__( self, parser, function, expr, closeparan )
-        self.parser = parser
-        self._nonterms = self.function, self.expr, self.closeparan = \
+        NonTerminal.__init__( self, parser, function, expr, closeparan )
+        self._nonterms = \
+            self.function, self.expr, self.closeparan = \
                 function, expr, closeparan
         self._nonterms = filter( None, self._nonterms )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'func_call: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class Operator( Node ):
+class Operator( NonTerminal ):
     """class to handle `operator` grammar."""
 
     def __init__( self, parser, nonterm ) :
-        Node.__init__( self, parser, nonterm )
-        self.parser = parser
-        self.nonterm = nonterm
-        self._nonterms = ( self.nonterm, )
+        NonTerminal.__init__( self, parser, nonterm )
+        self._nonterms = (self.nonterm,) = (nonterm,)
+        # Set parent attribute for children, should be last statement !! 
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'operator: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class Unary( Node ):
-    """class to handle `unary_oper` grammar."""
+#class Unary( NonTerminal ):
+#    """class to handle `unary_oper` grammar."""
+#
+#    def __init__( self, parser, nonterm ) :
+#        NonTerminal.__init__( self, parser, nonterm )
+#        self._nonterm = ( self.nonterm, ) = (nonterm,)
+#        # Set parent attribute for children, should be last statement !! 
+#        self.setparent( self, self.children() )
+#
+#    def children( self ):
+#        return self._nonterms
+#
+#    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
+#        lead = ' ' * offset
+#        buf.write( lead + 'unary_oper: ' )
+#        if showcoord:
+#            buf.write( ' (at %s)' % self.coord )
+#        buf.write('\n')
+#        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
-    def __init__( self, parser, terminal ) :
-        Node.__init__( self, parser, terminal )
-        self.parser = parser
-        self.TERMINAL = terminal
-        self._terms = ( self.TERMINAL, )
+#---- Terminals
 
-    def children( self ):
-        return self._terms
-
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
-        lead = ' ' * offset
-        buf.write( lead + 'unary_oper: ' )
-        if showcoord:
-            buf.write( ' (at %s)' % self.coord )
-        buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
-
-
-class Combinator( Node ):
-    """class to handle `combinator` grammar."""
-
-    def __init__( self, parser, nonterm ) :
-        Node.__init__( self, parser, nonterm )
-        self.parser = parser
-        self.nonterm = nonterm
-        self._nonterms = ( self.nonterm, )
-
-    def children( self ):
-        return self._nonterms
-
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
-        lead = ' ' * offset
-        buf.write( lead + 'combinator: ' )
-        if showcoord:
-            buf.write( ' (at %s)' % self.coord )
-        buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
-
-
-class Cdatas( Node ):
-    """class to handle `cdatas` grammar."""
-
-    def __init__( self, parser, cdatas, cdata ) :
-        Node.__init__( self, parser, cdata, cdata )
-        self.parser = parser
-        self._nonterms = self.cdatas, self.cdata = cdatas, cdata
-        self._nonterms = filter( None, self._nonterms )
-
-    def children( self ):
-        return self._nonterms
-
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
-        lead = ' ' * offset
-        buf.write( lead + 'cdatas: ' )
-        if showcoord:
-            buf.write( ' (at %s)' % self.coord )
-        buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
-
-
-class Cdata( Node ):
-    """class to handle `cdata` grammar."""
-
-    def __init__( self, parser, cdo, cdata_conts, cdc ) :
-        Node.__init__( self, parser, cdo, cdata_conts, cdc )
-        self.parser = parser
-        self._nonterms = self.cdo, self.cdata_conts, self.cdc = \
-                cdo, cdata_conts, cdc
-        self._nonterms = filter( None, self._nonterms )
-
-    def children( self ):
-        return self._nonterms
-
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
-        lead = ' ' * offset
-        buf.write( lead + 'cdata: ' )
-        if showcoord:
-            buf.write( ' (at %s)' % self.coord )
-        buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
-
-
-class CdataConts( Node ):
-    """class to handle `cdata_conts` grammar."""
-
-    def __init__( self, parser, cdata_conts, cdata_cont ) :
-        Node.__init__( self, parser, cdata_conts, cdata_cont )
-        self.parser = parser
-        self._nonterms = self.cdata_conts, self.cdata_cont = \
-                cdata_conts, cdata_cont
-        self._nonterms = filter( None, self._nonterms )
-
-    def children( self ):
-        return self._nonterms
-
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
-        lead = ' ' * offset
-        buf.write( lead + 'cdata_conts: ' )
-        if showcoord:
-            buf.write( ' (at %s)' % self.coord )
-        buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
-
-
-class CdataCont( Node ):
-    """class to handle `cdata_cont` grammar."""
-
-    def __init__( self, parser, item ) :
-        Node.__init__( self, parser, item )
-        self.parser = parser
-        self.item = item
-        self._nonterms = (self.item,)
-
-    def children( self ):
-        return self._nonterms
-
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
-        lead = ' ' * offset
-        buf.write( lead + 'cdata_cont: ' )
-        if showcoord:
-            buf.write( ' (at %s)' % self.coord )
-        buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
-
-
-class TerminalS( Node ):
+class TerminalS( NonTerminal ):
     """class to handle terminal tokens is optionally succeeded by whitespace
     grammar."""
 
-    def __init__( self, parser, terminal, ws ) :
-        Node.__init__( self, parser, terminal, ws )
-        self.parser = parser
-        self._terms = self.TERMINAL, self.S = terminal, ws
-        self._terms = filter( None, self._terms )
+    def __init__( self, parser, terminal, wc ) :
+        NonTerminal.__init__( self, parser, terminal, wc )
+        self._terms = (self.TERMINAL,) = (terminal,)
+        self._nonterms = (self.wc,) = (wc,)
+        self._nonterms = filter( None, self._nonterms )
+        # Set parent attribute for children, should be last statement !! 
+        self.setparent( self, self.children() )
 
     def children( self ):
-        return self._terms
+        return self._terms + self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
+        lead = ' ' * offset
+        buf.write( lead + 'TerminalS: (%s)' % type(self.TERMINAL) )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
-        [ c.show(buf, offset, attrnames, showcoord) for c in self.children() ]
+        buf.write('\n')
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class WC( Node ):
+class WC( NonTerminal ):
     """class to handle `wc` grammar."""
 
     def __init__( self, parser, wc, s, comment ) :
-        Node.__init__( self, parser, s, comment )
-        self.parser = parser
-        self.wc, self.S, self.COMMENT = wc, s, comment
-        self._terms = filter( None, (self.S, self.COMMENT) )
-        if self.wc :
-            self._nonterms = (self.wc,)
+        NonTerminal.__init__( self, parser, wc, s, comment )
+        self._nonterms = (self.wc,) = (wc,)
+        self._nonterms = filter( None, self._nonterms )
+        self._terms = self.S, self.COMMENT = s, comment
+        self._terms = filter( None, self._terms )
+        # Set parent attribute for children, should be last statement !! 
+        self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms + self._terms
 
-    def tohtml( self ):
-        pass
+    def dump( self, context ):
+        return ''.join([ x.dump(context) for x in self.flatten() ])
 
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
-        [ c.show(buf, offset, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset, attrnames, showcoord) for x in self.flatten() ]
+
+    def flatten( self ) :
+        return NonTerminal.flatten( self, 'wc', ('S', 'COMMENT') )
 
 
-class Any( Node ):
+class Any( NonTerminal ):
     """class to handle `any` grammar."""
 
-    def __init__( self, parser, open_, expr, close_ ) :
-        Node.__init__( self, parser, open_, expr, close_ )
-        self.parser = parser
-        self._nonterms = self.open_, self.expr, self.close_ = open_, expr, close_
+    def __init__( self, parser, osqr, expr, csqr ) :
+        NonTerminal.__init__( self, parser, osqr, expr, csqr )
+        self._nonterms = self.opensqr, self.expr, self.closesqr = osqr,expr,csqr
+        # Set parent attribute for children, should be last statement !! 
+        self.setparent( self, self.children() )
 
     def children( self ):
-        return self._nonterms + self._terms
+        return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
-        [ c.show(buf, offset, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset, attrnames, showcoord) for x in self.children() ]
 
 
 #---- Extension language
 
-class ExtnExpr( Node ):
+class ExtnExpr( NonTerminal ):
     """class to handle `extn_expr` grammar."""
 
     def __init__( self, parser, extn_expr, ws ) :
-        Node.__init__( self, parser, extn_expr, ws )
-        self.parser = parser
+        NonTerminal.__init__( self, parser, extn_expr, ws )
         self._terms = self.EXTN_EXPR, self.S = extn_expr, ws
         self._terms = filter( None, self._terms )
 
     def children( self ):
         return self._terms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'extn_expr: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class FunctionDef( Node ):
+class FunctionDef( NonTerminal ):
     """class to handle `functiondef` grammar."""
 
     def __init__( self, parser, functionstart, functionbody ) :
-        Node.__init__( self, parser, functionstart, functionbody )
-        self.parser = parser
+        NonTerminal.__init__( self, parser, functionstart, functionbody )
         self._nonterms = self.functionstart, self.functionbody = \
                 functionstart, functionbody
 
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'functiondef: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class IfelfiBlock( Node ):
+class IfelfiBlock( NonTerminal ):
     """class to handle `ifelfiblock` grammar."""
 
     def __init__( self, parser, ifblock, ifelfiblock, controlblock ) :
-        Node.__init__( self, parser, ifblock, ifelfiblock, controlblock )
-        self.parser = parser
+        NonTerminal.__init__( self, parser, ifblock, ifelfiblock, controlblock )
         self._nonterms = self.ifblock, self.ifelfiblock, self.controlblock = \
                 ifblock, ifelfiblock, controlblock
         self._nonterms = filter( None, self._nonterms )
@@ -1795,28 +1500,20 @@ class IfelfiBlock( Node ):
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'ifelfiblock: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class IfBlock( Node ):
+class IfBlock( NonTerminal ):
     """class to handle `ifblock` grammar."""
 
     def __init__( self, parser, ifcontrol, declarations, closebrace ) :
-        Node.__init__( self, parser, ifcontrol, declarations, closebrace )
-        self.parser = parser
+        NonTerminal.__init__( self, parser, ifcontrol, declarations, closebrace )
         self._nonterms = self.ifcontrol, self.declarations, self.closebrace = \
                 ifcontrol, declarations, closebrace
         self._nonterms = filter( None, self._nonterms )
@@ -1824,28 +1521,20 @@ class IfBlock( Node ):
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'ifblock: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class ElifBlock( Node ):
+class ElifBlock( NonTerminal ):
     """class to handle `elifblock` grammar."""
 
     def __init__( self, parser, elifcontrol, declarations, closebrace ) :
-        Node.__init__( self, parser, elifcontrol, declarations, closebrace )
-        self.parser = parser
+        NonTerminal.__init__( self, parser, elifcontrol, declarations, closebrace )
         self._nonterms = self.elifcontrol, self.declarations, self.closebrace = \
                 elifcontrol, declarations, closebrace
         self._nonterms = filter( None, self._nonterms )
@@ -1853,28 +1542,20 @@ class ElifBlock( Node ):
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'elifblock: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class ElseBlock( Node ):
+class ElseBlock( NonTerminal ):
     """class to handle `elseblock` grammar."""
 
     def __init__( self, parser, elsecontrol, declarations, closebrace ) :
-        Node.__init__( self, parser, elsecontrol, declarations, closebrace )
-        self.parser = parser
+        NonTerminal.__init__( self, parser, elsecontrol, declarations, closebrace )
         self._nonterms = self.elsecontrol, self.declarations, self.closebrace = \
                 elsecontrol, declarations, closebrace
         self._nonterms = filter( None, self._nonterms )
@@ -1882,28 +1563,20 @@ class ElseBlock( Node ):
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'elseblock: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class ForBlock( Node ):
+class ForBlock( NonTerminal ):
     """class to handle `forblock` grammar."""
 
     def __init__( self, parser, forcontrol, declaration, closebrace ) :
-        Node.__init__( self, parser, forcontrol, declarations, closebrace )
-        self.parser = parser
+        NonTerminal.__init__( self, parser, forcontrol, declarations, closebrace )
         self._nonterms = self.forcontrol, self.declarations, self.closebrace = \
                 forcontrol, declarations, closebrace
         self._nonterms = filter( None, self._nonterms )
@@ -1911,28 +1584,20 @@ class ForBlock( Node ):
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'functiondef: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-class WhileBlock( Node ):
+class WhileBlock( NonTerminal ):
     """class to handle `whileblock` grammar."""
 
     def __init__( self, parser, whilecontrol, declarations, closebrace ) :
-        Node.__init__( self, parser, whilecontrol, declarations, closebrace )
-        self.parser = parser
+        NonTerminal.__init__( self, parser, whilecontrol, declarations, closebrace )
         self._nonterms = \
             self.whilecontrol, self.declarations, self.closebrace = \
                 whilecontrol, declarations, closebrace
@@ -1941,20 +1606,13 @@ class WhileBlock( Node ):
     def children( self ):
         return self._nonterms
 
-    def tohtml( self ):
-        pass
-
-    def dump( self ):
-        return ''.join([ c.dump() for c in self.children() ])
-
-    def show( self, buf=sys.stdout, offset=0, attrnames=False,
-              showcoord=False ):
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'whileblock: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
-        [ c.show(buf, offset+2, attrnames, showcoord) for c in self.children() ]
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
 #-------------------------- AST Terminals -------------------------
@@ -1987,7 +1645,10 @@ class SUBSTRINGMATCH( Terminal ) : pass
 class STRING( Terminal ) : pass
 class NUMBER( Terminal ) : pass
 class PERCENTAGE( Terminal ) : pass
-class DIMENSION( Terminal ): pass
+class DIMENSION( Terminal ):
+    def dump( self, context ):
+        return self.terminal.__str__()
+
 class UNICODERANGE( Terminal ) : pass
 class DLIMIT( Terminal ) : pass
 
@@ -2031,6 +1692,8 @@ class FUNCTIONEND( Terminal ) : pass
 class Dimension( object ):
     def __init__( self, value ):
         self.value = value
+    def __str__( self ):
+        return self.value
 
 class Ems( Dimension ): pass
 class Exs( Dimension ): pass

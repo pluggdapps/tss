@@ -1,6 +1,6 @@
 #! /usr/bin/env python
 
-import os, sys
+import os, sys, codecs
 from   optparse         import OptionParser
 from   os.path          import abspath, join
 from   tss.parser       import TSSParser
@@ -9,7 +9,14 @@ THISDIR = abspath( '.' )
 
 def test_execute( f, options ) :
     print "Testing %r ..." % f,
-    csstext = open(f).read()
+    txt = open(f).read(4)
+    if chr(0xef) == txt[0] and chr(0xbb) == txt[1] and chr(0xbf) == txt[2] :
+        fd = codecs.open(f, encoding='utf-8')
+        fd.seek(3)
+        csstext = fd.read()
+    else :
+        csstext = codecs.open(f, encoding='utf-8').read()
+
     tssparser = TSSParser( debug=int(options.debug) )
     tu = tssparser.parse( csstext, debuglevel=int(options.debug) )
     rc = None
@@ -23,9 +30,12 @@ def test_execute( f, options ) :
             rc = 'knownerror'
             if options.rmonsuccess : os.remove(f)
         elif csstext != dumptext :
-            open('a', 'w').write(csstext)
-            open('b', 'w').write(dumptext)
-            print "(failure)"
+            txtlen = len(csstext) if len(csstext) < len(dumptext) else len(dumptext)
+            diff = [ i for i in range(txtlen) if csstext[i] != dumptext[i] ]
+            off = diff and diff[0] or len(csstext)
+            codecs.open('a', mode='w', encoding='utf8').write(csstext)
+            codecs.open('b', mode='w', encoding='utf8').write(dumptext)
+            print "(fail at %s)" % off
             rc = 'failure'
         else :
             print "(success)"
@@ -66,6 +76,6 @@ def _option_parse() :
 if __name__ == '__main__' :
     options, args = _option_parse()
     if args :
-        test_execute( abspath(args[0]), options )
+        [ test_execute( abspath(f), options ) for f in args ]
     elif options.directory :
         test_samplecss( abspath(options.directory), options )

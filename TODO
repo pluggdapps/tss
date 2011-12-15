@@ -1,4 +1,6 @@
 * What is BOM in syntax grammar ? Should this part of string encoding or lexer ?
+    BOM (EF, BB, BF) syntax is not allowed in utf-8 encoding, so where ever
+        codecs.open(...).read() is used stip them off.
 
 * charset directive should be read and based on the character-set encoding
   the whole text must be re-read. This character set encoding specified in TTL
