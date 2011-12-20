@@ -1,5 +1,0 @@
-@charset 'utf-8';
-
-a[href^='http://']:after {
-    content: 'Translations 什麽是Unicode (統一碼/標準萬國碼)?';
-}
