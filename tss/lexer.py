@@ -19,15 +19,18 @@ import re, sys, logging
 import ply.lex
 from   ply.lex      import TOKEN
 
-from   tss.ast      import *
+from   tss.ast      import EMS, EXS, LENGTHPX, LENGTHCM, LENGTHMM, LENGTHIN, \
+                           LENGTHPT, LENGTHPC, ANGLEDEG, ANGLERAD, ANGLEGRAD, \
+                           TIMEMS, TIMES, FREQHZ, FREQKHZ, PERCENTAGE, NUMBER, \
+                           HASH
 
 log = logging.getLogger( __name__ )
 
 class TSSLexer( object ) :
     """A lexer for the TSS Extension language.
-        build() To build   
-        input() Set the input text
-        token() To get new tokens.
+        * build(), to build   
+        * input(), set the input text
+        * token(), to get new tokens.
     The public attribute filename can be set to an initial filaneme, but the
     lexer will update it upon #line directives."""
 
@@ -118,7 +121,7 @@ class TSSLexer( object ) :
         'SUBSTRINGMATCH',
 
         # Literals
-        'STRING', 'NUMBER', 'PERCENTAGE', 'DIMENSION', 'UNICODERANGE', 'DLIMIT',
+        'STRING', 'NUMBER', 'DIMENSION', 'UNICODERANGE', 'DLIMIT',
 
         # Single character token 
         'PLUS', 'GT', 'LT', 'TILDA', 'COMMA', 'COLON', 'MINUS', 'EQUAL', 'DOT',
@@ -147,13 +150,15 @@ class TSSLexer( object ) :
 
     num		 = r'([0-9]+|[0-9]*\.[0-9]+)'
     nonascii = r'[\200-\377]'
+    uni      = r'\B\d\D\s\S\w\W'
     unicode_ = r'(\\[0-9a-f]{1,6}[ \t\r\n\f]?)'
     escape	 = unicode_ + r'|' r'(\\[ -~\200-\377])'
     nmstart	 = r'[a-z_]'     r'|' + nonascii + r'|' + escape
     nmchar	 = r'[a-z0-9_-]' r'|' + nonascii + r'|' + escape
-    string1	 = r'("([\t !\#$%&(-~]|\\' + nl+ r"|'|" + nonascii + r'|' + escape + r')*")'
-    string2	 = r"('([\t !\#$%&(-~]|\\" + nl+ r'|"|' + nonascii + r"|" + escape + r")*')"
-    string	 = r'(' + string1 + r'|' + string2 + r')'
+    #string1 = r'("([\t !\#$%&(-~]|\\' + nl+ r"|'|" + nonascii + r'|' + escape + r')*")'
+    #string2 = r"('([\t !\#$%&(-~]|\\" + nl+ r'|"|' + nonascii + r"|" + escape + r")*')"
+    #string	 = r'(' + string1 + r'|' + string2 + r')'
+    string	 = r"(\"[^\"]*\")|('[^']*')"
     ident	 = r'[-]?(' + nmstart + r')(' + nmchar + r')*'
     name	 = r'(' + nmchar + r')+'
     url		 = r'([!\#$%&*-~]|' + nonascii + r'|' + escape +r')*'
@@ -277,106 +282,108 @@ class TSSLexer( object ) :
 
     @TOKEN( r'\#' + name )
     def t_HASH( self, t ) :
+        t.value = (HASH, t.value)
         return t
 
     @TOKEN( num + r'em' )
     def t_EMS( self, t ) :
         t.type = 'DIMENSION'
-        t.value = Ems(t.value)
+        t.value = (EMS, t.value)
         return t
 
     @TOKEN( num + r'ex' )
     def t_EXS( self, t ) :
         t.type = 'DIMENSION'
-        t.value = Exs(t.value)
+        t.value = (EXS, t.value)
         return t
 
     @TOKEN( num + r'px' )
     def t_LENGTH_PX( self, t ) :
         t.type = 'DIMENSION'
-        t.value = LengthPX(t.value)
+        t.value = (LENGTHPX, t.value)
         return t
 
     @TOKEN( num + r'cm' )
     def t_LENGTH_CM( self, t ) :
         t.type = 'DIMENSION'
-        t.value = LengthCM(t.value)
+        t.value = (LENGTHCM, t.value)
         return t
 
     @TOKEN( num + r'mm' )
     def t_LENGTH_MM( self, t ) :
         t.type = 'DIMENSION'
-        t.value = LengthMM(t.value)
+        t.value = (LENGTHMM, t.value)
         return t
 
     @TOKEN( num + r'in' )
     def t_LENGTH_IN( self, t ) :
         t.type = 'DIMENSION'
-        t.value = LengthIN(t.value)
+        t.value = (LENGTHIN, t.value)
         return t
 
     @TOKEN( num + r'pt' )
     def t_LENGTH_PT( self, t ) :
         t.type = 'DIMENSION'
-        t.value = LengthPT(t.value)
+        t.value = (LENGTHPT, t.value)
         return t
 
     @TOKEN( num + r'pc' )
     def t_LENGTH_PC( self, t ) :
         t.type = 'DIMENSION'
-        t.value = LengthPC(t.value)
+        t.value = (LENGTHPC, t.value)
         return t
 
     @TOKEN( num + r'deg' )
     def t_ANGLE_DEG( self, t ) :
         t.type = 'DIMENSION'
-        t.value = AngleDEG(t.value)
+        t.value = (ANGLEDEG, t.value)
         return t
 
     @TOKEN( num + r'rad' )
     def t_ANGLE_RAD( self, t ) :
         t.type = 'DIMENSION'
-        t.value = AngleRAD(t.value)
+        t.value = (ANGLERAD, t.value)
         return t
 
     @TOKEN( num + r'grad' )
     def t_ANGLE_GRAD( self, t ) :
         t.type = 'DIMENSION'
-        t.value = AngleGRAD(t.value)
+        t.value = (ANGLEGRAD, t.value)
         return t
 
     @TOKEN( num + r'ms' )
     def t_TIME_MS( self, t ) :
         t.type = 'DIMENSION'
-        t.value = TimeMS(t.value)
+        t.value = (TIMEMS, t.value)
         return t
 
     @TOKEN( num + r's' )
     def t_TIME_S( self, t ) :
         t.type = 'DIMENSION'
-        t.value = TimeS(t.value)
+        t.value = (TIMES, t.value)
         return t
 
     @TOKEN( num + r'Hz' )
     def t_FREQ_HZ( self, t ) :
         t.type = 'DIMENSION'
-        t.value = FreqHZ(t.value)
+        t.value = (FREQHZ, t.value)
         return t
 
     @TOKEN( num + r'kHz' )
     def t_FREQ_KHZ( self, t ) :
         t.type = 'DIMENSION'
-        t.value = FreqKHZ(t.value)
+        t.value = (FREQKHZ, t.value)
         return t
 
     @TOKEN( num + r'%' )
     def t_PERCENTAGE( self, t ) :
         t.type = 'DIMENSION'
-        t.value = Percentage(t.value)
+        t.value = (PERCENTAGE, t.value)
         return t
 
     @TOKEN( num )
     def t_NUMBER( self, t ) :
+        t.value = (NUMBER, t.value)
         return t
 
     @TOKEN( string )
@@ -423,18 +430,18 @@ class TSSLexer( object ) :
 
 
     t_PLUS          = r'\+'
+    t_MINUS         = r'-'
+    t_STAR          = r'\*'
+    t_FWDSLASH      = r'\/'
+    t_PERCENT       = r'%'
+    t_EQUAL         = r'='
     t_GT            = r'>'
     t_LT            = r'<'
     t_TILDA         = r'~'
     t_COMMA         = r','
     t_COLON         = r':'
-    t_MINUS         = r'-'
-    t_EQUAL         = r'='
     t_DOT           = r'\.'
-    t_STAR          = r'\*'
     t_SEMICOLON     = r';'
-    t_PERCENT       = r'%'
-    t_FWDSLASH      = r'\/'
     t_OPENBRACE     = r'\{'
     t_CLOSEBRACE    = r'\}'
     t_OPENSQR       = r'\['
@@ -472,7 +479,7 @@ if __name__ == "__main__":
             print "Lexing file %r ..." % f
             tsslex = TSSLexer( errfoo, filename=f )
             tsslex.build()
-            tsslex.input( open(f).read() )
+            tsslex.input( codecs.open(f, encoding='utf-8').read() )
             tok = _fetchtoken( tsslex, stats )
             while tok :
                 tok = _fetchtoken( tsslex, stats )

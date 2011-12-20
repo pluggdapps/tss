@@ -8,7 +8,7 @@ from   tss.parser       import TSSParser
 THISDIR = abspath( '.' )
 
 def test_execute( f, options ) :
-    print "Testing %r ..." % f,
+    print "Testing %r ...\n" % f,
     txt = open(f).read(4)
     if chr(0xef) == txt[0] and chr(0xbb) == txt[1] and chr(0xbf) == txt[2] :
         fd = codecs.open(f, encoding='utf-8')

@@ -39,6 +39,7 @@ class TSSParser( object ):
 
     def __init__( self,
                   tssconfig={},
+                  encoding=None,
                   outputdir='',
                   lex_debug=None,
                   yacc_debug=None,
@@ -51,10 +52,13 @@ class TSSParser( object ):
             All configurations related to tayra templates, are represented in
             this object.
 
+        ``encoding``
+            Character encoding for input Tayra style text.
+
         ``outputdir``
             To change the directory in which the parsetab.py file (and other
             output files) are written.
-                        
+
         ``lex_debug``
             PLY-Yacc option.
 
@@ -63,6 +67,7 @@ class TSSParser( object ):
             table from the grammar.
         """
         self.debug = lex_debug or yacc_debug or debug
+        self.encoding = encoding
         optimize = tssconfig.get( 'parse_optimize', False )
         lextab = tssconfig.get( 'lextab', LEXTAB ) or LEXTAB
         yacctab = tssconfig.get( 'yacctab', YACCTAB ) or YACCTAB
@@ -75,7 +80,7 @@ class TSSParser( object ):
         self.tokens = self.tsslex.tokens
         # Build Yaccer
         kwargs = { 'optimize' : optimize } if optimize else {}
-        kwargs.update( debug=yacc_debug )
+        kwargs.update( debug=(yacc_debug or debug) )
         kwargs.update( outputdir=outputdir ) if outputdir else None
         kwargs.update( tabmodule=yacctab )
         self.parser = ply.yacc.yacc( module=self, **kwargs )
@@ -133,7 +138,8 @@ class TSSParser( object ):
     # ---------- Precedence and associativity of operators --------------------
 
     precedence = (
-        ('left', 'PLUS', 'MINUS'),
+        ('left', 'ARITH'),
+        ('left', 'FACTOR'),
         ('right', 'UNARY'),
     )
 
@@ -165,7 +171,6 @@ class TSSParser( object ):
     def p_stylesheet( self, p ):
         """stylesheet   : cdatas
                         | charset
-                        | import
                         | namespace
                         | statement"""
         p[0] = StyleSheet( p.parser, p[1] )
@@ -173,6 +178,7 @@ class TSSParser( object ):
     def p_statement( self, p ):
         """statement    : page
                         | font_face
+                        | import
                         | media
                         | atrule
                         | rulesets
@@ -202,10 +208,10 @@ class TSSParser( object ):
         p[0] = CdataConts( p.parser, *args )
 
     def p_cdata_cont( self, p ):
-        """cdata_cont   : expr
+        """cdata_cont   : exprs
                         | any
                         | operator
-                        | block"""
+                        | compoperator"""
         p[0] = CdataCont( p.parser, p[1] )
 
     #---- @charset 
@@ -292,7 +298,7 @@ class TSSParser( object ):
         p[0] = Mediums( p.parser, *args )
 
     def p_medium( self, p ):
-        """medium       : expr
+        """medium       : exprs
                         | any"""
         p[0] = Medium( p.parser, p[1] )
 
@@ -300,34 +306,32 @@ class TSSParser( object ):
 
     # Gotcha : Handle generic at-rules
     def p_atrule_1( self, p ):
-        """atrule       : atkeyword expr block"""
-        p[0] = AtRule( p.parser, p[1], p[2], None, p[3] )
+        """atrule       : atkeyword exprs block"""
+        p[0] = AtRule( p.parser, p[1], p[2], None, p[3], None )
 
     def p_atrule_2( self, p ):
-        """atrule       : atkeyword expr SEMICOLON"""
+        """atrule       : atkeyword exprs SEMICOLON"""
         semi = SEMICOLON(p.parser, p[3])
-        p[0] = AtRule( p.parser, p[1], p[2], semi, None )
+        p[0] = AtRule( p.parser, p[1], p[2], semi, None, None )
 
     def p_atrule_3( self, p ):
         """atrule       : atkeyword block"""
-        p[0] = AtRule( p.parser, p[1], None, None, p[2] )
+        p[0] = AtRule( p.parser, p[1], None, None, p[2], None )
 
     def p_atrule_4( self, p ):
         """atrule       : atkeyword SEMICOLON"""
         semi = SEMICOLON(p.parser, p[2])
-        p[0] = AtRule( p.parser, p[1], None, semi, None )
+        p[0] = AtRule( p.parser, p[1], None, semi, None, None )
 
     def p_atrule_5( self, p ):
-        """atrule       : atkeyword expr openbrace rulesets closebrace"""
-        decl = Declarations( p.parser, None, None, p[4] )
-        bloc = Block( p.parser, p[3], decl, p[5] )
-        p[0] = AtRule( p.parser, p[1], p[2], None, bloc )
+        """atrule       : atkeyword exprs openbrace rulesets closebrace"""
+        rule = ( p[3], p[4], p[5] ) 
+        p[0] = AtRule( p.parser, p[1], p[2], None, None, rule )
 
     def p_atrule_6( self, p ):
         """atrule       : atkeyword openbrace rulesets closebrace"""
-        decl = Declarations( p.parser, None, None, p[3] )
-        bloc = Block( p.parser, p[2], decl, p[4] )
-        p[0] = AtRule( p.parser, p[1], None, None, bloc )
+        rule = ( p[2], p[3], p[4] ) 
+        p[0] = AtRule( p.parser, p[1], None, None, None, rule )
 
     #---- ruleset
 
@@ -350,7 +354,7 @@ class TSSParser( object ):
 
     def p_ruleset_3( self, p ):
         """ruleset      : PERCENT ident block
-                        | PERCENT ident expr block"""
+                        | PERCENT ident exprs block"""
         perc = PERCENT( p.parser, p[1] )
         args = [ perc, p[2], p[3], p[4] 
                ] if len(p) == 5 else [ perc, p[2], None, p[3] ]
@@ -497,22 +501,22 @@ class TSSParser( object ):
         p[0] = Declarations( p.parser, *args )
 
     def p_declaration_1( self, p ):
-        """declaration  : ident colon expr prio
-                        | ident colon expr"""
+        """declaration  : ident colon exprs prio
+                        | ident colon exprs"""
         args = [ None, p[1], None, p[2], p[3], p[4] 
                ] if len(p) == 5 else [ None, p[1], None, p[2], p[3], None ]
         p[0] = Declaration( p.parser, *args )
 
     def p_declaration_2( self, p ):
-        """declaration  : extn_expr colon expr prio
-                        | extn_expr colon expr"""
+        """declaration  : extn_expr colon exprs prio
+                        | extn_expr colon exprs"""
         args = [ None, None, p[1], p[2], p[3], p[4] 
                ] if len(p) == 5 else [ None, None, p[1], p[2], p[3], None ]
         p[0] = Declaration( p.parser, *args )
 
     def p_declaration_3( self, p ):
-        """declaration  : star ident colon expr prio
-                        | star ident colon expr"""
+        """declaration  : star ident colon exprs prio
+                        | star ident colon exprs"""
         args = [ p[1], p[2], None, p[3], p[4], p[5] 
                ] if len(p) == 6 else [ p[1], p[2], None, p[3], p[4], None ]
         p[0] = Declaration( p.parser, *args )
@@ -521,30 +525,43 @@ class TSSParser( object ):
         """prio         : important_sym"""
         p[0] = Priority( p.parser, p[1] )
 
-    #---- expr
+    #---- expressions
+
+    #    """exprs        : expr
+    #                    | exprs expr
+    #                    | exprs compoperator expr
+    #                    | exprs operator expr"""
+    def p_exprs( self, p ):
+        """exprs        : expr
+                        | unaryexpr
+                        | exprs expr
+                        | exprs unaryexpr
+                        | exprs compoperator expr
+                        | exprs compoperator unaryexpr
+                        | exprs operator expr
+                        | exprs operator unaryexpr"""
+        if len(p) == 2 :
+            args = [ None, None, None, p[1] ]
+        elif len(p) == 3 :
+            args = [ p[1], None, None, p[2] ]
+        elif isinstance( p[2], Operator ) :
+            args = [ p[1], None, p[2], p[3] ]
+        else :
+            args = [ p[1], p[2], None, p[3] ]
+        p[0] = Exprs( p.parser, *args )
 
     def p_expr( self, p ):
-        """expr         : binaryexpr
-                        | expr binaryexpr"""
-        args = [ p[1], p[2] ] if len(p) == 3 else [ None,  p[1] ]
-        p[0] = Expr( p.parser, *args )
-
-    def p_binaryexpr( self, p ):
-        """binaryexpr   : term
-                        | unaryexpr
-                        | extn_expr
-                        | binaryexpr operator binaryexpr"""
-        args = [ p[1], None, None, None
-               ] if len(p) == 2 else [ None, p[1], p[2], p[3] ]
-        p[0] = BinaryExpr( p.parser, *args )
+        """expr         : term
+                        | extn_expr"""
+        p[0] = Expr( p.parser, p[1] )
 
     def p_unaryexpr_1( self, p ):
-        """unaryexpr    : openparan expr closeparan"""
+        """unaryexpr    : openparan exprs closeparan"""
         p[0] = UnaryExpr( p.parser, None, None, (p[1], p[2], p[3]) )
 
     def p_unaryexpr_2( self, p ):
-        """unaryexpr    : plus term_val %prec UNARY
-                        | minus term_val %prec UNARY"""
+        """unaryexpr    : plus expr %prec UNARY
+                        | minus expr %prec UNARY"""
         p[0] = UnaryExpr( p.parser, p[1], p[2], None )
 
     def p_term( self, p ):
@@ -554,31 +571,33 @@ class TSSParser( object ):
                         | uri
                         | unicoderange
                         | hash"""
-        # Note : here hash should be hex-color #[0-9a-z]{3} or #[0-9a-z]{6}
-        # Perform the contstraint check inside the `Term` class
+        if isinstance( getattr(p[1], 'TERMINAL', None), HASH ) :
+            assert p[1].TERMINAL.checkhex(), 'Must be a hexadecimal number'
         p[0] = Term( p.parser, p[1])
 
     def p_term_val( self, p ):
         """term_val     : number
-                        | percentage
                         | dimension
                         | func_call"""
         p[0] = TermVal( p.parser, p[1] )
                          
     def p_func( self, p ):
-        """func_call    : function expr closeparan
+        """func_call    : function exprs closeparan
                         | function closeparan"""
         args = [ p[1], p[2], p[3] ] if len(p) == 4 else [ p[1], None, p[2] ]
         p[0] = FuncCall( p.parser, *args )
+
+    def p_compoperator( self, p ):
+        """compoperator : plus %prec ARITH
+                        | minus %prec ARITH
+                        | star %prec FACTOR
+                        | fwdslash %prec FACTOR"""
+        p[0] = CompOperator( p.parser, p[1] )
 
     # Note : `operator` should never be a `SEMICOLON`,
     #        as per CSS3 grammar only, fwdslash and comma are real operators
     def p_operator( self, p ):
         """operator     : dlimit
-                        | plus
-                        | minus
-                        | star
-                        | fwdslash
                         | comma
                         | colon
                         | dot
@@ -586,11 +605,6 @@ class TSSParser( object ):
                         | gt
                         | lt"""
         p[0] = Operator( p.parser, p[1] )
-
-    #def p_unary_oper( self, p ):
-    #    """unary_oper   : plus
-    #                    | minus"""
-    #    p[0] = Unary( p.parser, p[1] )
 
     #---- Terminals with whitespace
 
@@ -688,23 +702,26 @@ class TSSParser( object ):
     def p_number( self, p ):
         """number       : NUMBER wc
                         | NUMBER"""
-        t = NUMBER( p.parser, p[1] )
+        (cls, value) = p[1]
+        term = cls( p.parser, value )
         wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_percentage( self, p ):
-        """percentage   : PERCENTAGE wc
-                        | PERCENTAGE"""
-        t = PERCENTAGE( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
+        p[0] = TerminalS( p.parser, term, wc )
 
     def p_dimension( self, p ):
         """dimension    : DIMENSION wc
                         | DIMENSION"""
-        t = DIMENSION( p.parser, p[1] )
+        (cls, value) = p[1]
+        term = cls( p.parser, value )
         wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
+        p[0] = TerminalS( p.parser, term, wc )
+
+    def p_hash( self, p ):
+        """hash         : HASH wc
+                        | HASH"""
+        (cls, value) = p[1]
+        term = cls( p.parser, value )
+        wc = p[2] if len(p) == 3 else None
+        p[0] = TerminalS( p.parser, term, wc )
 
     def p_fwdslash( self, p ):
         """fwdslash     : FWDSLASH wc
@@ -717,13 +734,6 @@ class TSSParser( object ):
         """comma        : COMMA wc
                         | COMMA"""
         t = COMMA( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_hash( self, p ):
-        """hash         : HASH wc
-                        | HASH"""
-        t = HASH( p.parser, p[1] )
         wc = p[2] if len(p) == 3 else None
         p[0] = TerminalS( p.parser, t, wc )
 
@@ -1000,7 +1010,7 @@ class TSSParser( object ):
     #---- For confirmance with forward compatible CSS
 
     def p_any( self, p):
-        """any          : opensqr expr closesqr"""
+        """any          : opensqr exprs closesqr"""
         p[0] = Any( p.parser, p[1], p[2], p[3] )
 
     def p_error( self, p ):
@@ -1031,12 +1041,13 @@ class Coord( object ):
 
 if __name__ == "__main__":
     import pprint, time
-    
-    text   = open(sys.argv[1]).read() if len(sys.argv) > 1 else "hello" 
-    parser = TSSParser(
-                lex_optimize=True, yacc_debug=True, yacc_optimize=False
-             )
-    t1     = time.time()
+
+    if len(sys.argv) > 1 :
+        text = codecs.open( sys.argv[1], encoding='utf-8' ).read()
+    else :
+        text = "hello"
+    parser = TSSParser( yacc_debug=True )
+    t1 = time.time()
     # set debuglevel to 2 for debugging
     t = parser.parse( text, 'x.c', debuglevel=2 )
     t.show( showcoord=True )

@@ -11,6 +11,7 @@ from   hashlib            import sha1
 from   tss.parser         import TSSParser
 from   tss.codegen        import InstrGen
 from   tss.runtime        import StackMachine, Namespace
+from   tss.utils          import charset
 
 class Compiler( object ):
     _memcache = {}
@@ -37,6 +38,7 @@ class Compiler( object ):
         self.tssfile = self.tsslookup.tssfile
         self.pyfile = self.tsslookup.pyfile
         self.tssconfig = tssconfig
+        self.encoding = self.tsslookup.encoding
         # Parser phase
         self.tssparser = tssparser or TSSParser( tssconfig=self.tssconfig )
         # Instruction generation phase
@@ -80,8 +82,9 @@ class Compiler( object ):
             tsshash = None
             code = compile( pytext, self.tssfile, 'exec' )
         else :
+            # pytext will be in unicode
             pytext = self.topy( tsshash=self.tsslookup.tsshash )
-            self.tsslookup.pytext = pytext
+            self.tsslookup.pytext = pytext = pytext.encode( self.encoding )
             code = compile( pytext, self.tssfile, 'exec' )
 
         if self.tssconfig['memcache'] :
@@ -94,7 +97,6 @@ class Compiler( object ):
         return tu
 
     def topy( self, *args, **kwargs ):
-        encoding = self.tssconfig['input_encoding']
         tu = self.toast()
         if tu :
             tu.validate()
@@ -104,6 +106,7 @@ class Compiler( object ):
             tu.tailpass( self.igen )                    # Tail pass
             return self.igen.codetext()
         else :
+            raise
             return None
 
     modulename = property( lambda s : basename(s.tssfile).split('.',1)[0] )
@@ -113,13 +116,13 @@ class StyleLookup( object ) :
     TSSCONFIG = [ 'directories', 'module_directory', 'devmod' ]
     def __init__( self, tssloc=None, tsstext=None, tssconfig={} ):
         [ setattr( self, k, tssconfig[k] ) for k in self.TSSCONFIG ]
-        self.tssconfig = tssconfig
-        self.encoding = tssconfig['input_encoding']
+        self.tssconfig, self.encoding = tssconfig, tssconfig['input_encoding']
         self.tssloc, self._tsstext = tssloc, tsstext
         self._tsshash, self._pytext = None, None
         if self.tssloc :
             self.tssfile = self._locatetss( self.tssloc, self.directories )
             self.pyfile = self.computepyfile( tssloc, tssconfig )
+            self.encoding = charset(tssfile=self.tssfile, encoding=self.encoding)
         elif self._tsstext :
             self.tssfile = '<Source provided as raw text>'
             self.pyfile = None
@@ -135,20 +138,20 @@ class StyleLookup( object ) :
         if self.devmod :
             return None
         elif self.pyfile and isfile(self.pyfile) and self._pytext == None :
-            self._pytext = codecs.open( self.pyfile, encoding=self.encoding ).read()
-        return self._pytext
+            self._pytext = open( self.pyfile ).read()
+        return self._pytext         # pytext will be encoded unicode (str)
 
-    def _setpytext( self, pytext ):
+    def _setpytext( self, pytext ): # pytext will be encoded unicode (str)
         if self.pyfile :
             d = dirname(self.pyfile)
             os.makedirs(d) if not isdir(d) else None
-            codecs.open( self.pyfile, mode='w', encoding=self.encoding ).write(pytext)
+            open( self.pyfile, mode='w' ).write(pytext)
             return len(pytext)
         return None
 
     def _gettsshash( self ):
-        if self._tsshash == None and self._tsstext :
-            self._tsshash = sha1( self._tsstext ).hexdigest()
+        if self._tsshash == None and self.tsstext :
+            self._tsshash = sha1( self.tsstext.encode('utf-8') ).hexdigest()
         return self._tsshash
 
     def _gethashkey( self ):

@@ -105,3 +105,17 @@ def hitch( function, *args, **kwargs ) :
         kwargs.update( kw )
         return function( *(args+a), **kwargs )
     return fnhitched
+
+
+def charset( tssfile=None, parseline=None, encoding=None ):
+    """Charset directive must come in the beginning of the Tayra template
+    text. Parse the text for the directive and return the encoding string.
+    """
+    if tssfile :
+        for line in open(tssfile).readlines() :
+            line = line.strip()
+            if line.startswith('@charset') :
+                parseline = line
+    if parseline :
+        encoding = parseline[8:].strip('\'\" \t\r\n;')
+    return encoding

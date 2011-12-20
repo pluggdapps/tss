@@ -6,20 +6,18 @@
 
 from   StringIO     import StringIO
 
-prolog = """
-from   StringIO             import StringIO
-"""
+prolog = """\
+from   StringIO     import StringIO 
+from   tss.runtime  import * """
 
-footer = """
+footer = """\
 _tsshash = %r
-_tssfile = %r
-"""
+_tssfile = %r """
 
 class InstrGen( object ) :
     machname = '_m'
 
     def __init__( self, compiler, tssconfig={} ):
-        from tss import DEFAULT_ENCODING
         self.compiler = compiler
         self.tssconfig = tssconfig
         self.devmod = self.tssconfig['devmod']
@@ -28,7 +26,7 @@ class InstrGen( object ) :
         self.optimaltext = []
         self.pytext = None
         # prolog for python translated template
-        self.encoding = tssconfig.get( 'input_encoding', DEFAULT_ENCODING )
+        self.encoding = compiler.encoding
 
     def __call__( self ):
         return InstrGen( self.compiler, tssconfig=self.tssconfig )
@@ -36,6 +34,10 @@ class InstrGen( object ) :
     def cr( self, count=1 ):
         self.outfd.write( '\n'*count )
         self.outfd.write( self.pyindent )
+
+    def outline( self, line, count=1 ):
+        self.cr( count=count )
+        self.outfd.write( line )
 
     def codeindent( self, up=None, down=None, indent=True ):
         self.flushtext()
@@ -58,140 +60,68 @@ class InstrGen( object ) :
     def indent( self ):
         if self.uglyhtml == False :
             self.flushtext()
-            self.cr()
-            self.outfd.write( '_m.indent()' )
+            self.outline( '_m.indent()' )
 
     def upindent( self, up=u'' ):
         if self.uglyhtml == False :
             self.flushtext()
-            self.cr()
-            self.outfd.write( '_m.upindent( up=%r )' % up )
+            self.outline( '_m.upindent( up=%r )' % up )
 
     def downindent( self, down=u'' ):
         if self.uglyhtml == False :
             self.flushtext()
-            self.cr()
-            self.outfd.write( '_m.downindent( down=%r )' % down )
+            self.outline( '_m.downindent( down=%r )' % down )
 
-    def comment( self, comment ):
-        if self.devmod :
+    def comment( self, comment, force=False ):
+        if self.devmod or force :
             self.flushtext()
-            self.cr()
-            self.outfd.write( '# ' + u' '.join(comment.rstrip('\r\n').splitlines()) )
+            self.outline( '# ' + u' '.join(comment.rstrip('\r\n').splitlines()) )
 
     def flushtext( self ):
         if self.optimaltext :
-            self.cr()
-            self.outfd.write( '_m.extend( %s )' % self.optimaltext )
+            self.outline( '_m.extend( %s )' % self.optimaltext )
             self.optimaltext = []
 
     def puttext( self, text, force=False ):
         self.optimaltext.append( text )
-        if force :
-            self.flushtext()
-
-    def putattrs( self, attrstext=None, attrslist=None ):
-        self.flushtext()
-        self.cr()
-        attrstext and self.outfd.write(
-            '_m.append( _m.Attributes( _attrstext=%r ))' % attrstext
-        )
-        attrslist and self.outfd.write(
-            '_m.append( _m.Attributes( _attrslist=%r ))' % attrslist
-        )
+        force and self.flushtext()
 
     def putstatement( self, stmt ):
         self.flushtext()
-        self.cr()
-        self.outfd.write( stmt.rstrip('\r\n') )
-
-    def putblock( self, codeblock, indent=True ):
-        [ self.putstatement(line) for line in codeblock.splitlines() ]
+        self.outline( stmt.rstrip('\r\n') )
 
     def evalexprs( self, code, filters ):
         code = code.strip()
         if code :
             self.flushtext()
-            self.cr()
-            self.outfd.write('_m.append( _m.evalexprs(%s, %s) )' % (code, filters))
+            self.outline('_m.append( _m.evalexprs(%s, %s) )' % (code, filters))
+
+    def evalfunc( self, fncall ):
+        fncall = fncall.strip()
+        if fncall :
+            self.flushtext()
+            self.outline( '_m.append( %s )' % fncall )
 
     def pushbuf( self ):
         self.flushtext()
-        self.cr()
-        self.outfd.write( '_m.pushbuf()' )
+        self.outline( '_m.pushbuf()' )
 
-    def popcompute( self, astext=True ):
+    def popappend( self, astext=True ):
         self.flushtext()
-        self.cr()
         if astext == True :
-            self.outfd.write( '_m.append( _m.popbuftext() )' )
+            self.outline( '_m.append( _m.popbuftext() )' )
         else :
-            self.outfd.write( '_m.append( _m.popbuf() )' )
+            self.outline( '_m.append( _m.popbuf() )' )
 
     def popreturn( self, astext=True ):
         self.flushtext()
-        self.cr()
         if astext == True :
-            self.outfd.write( 'return _m.popbuftext()' )
+            self.outline( 'return _m.popbuftext()' )
         else :
-            self.outfd.write( 'return _m.popbuf()' )
-
-    def handletag( self, indent=False, newline=u'' ):
-        self.flushtext()
-        self.cr()
-        # first arg is `content` and second arg is `tag`
-        self.outfd.write(
-            '_m.handletag( _m.popbuf(), _m.popbuf(), indent=%s, nl=%r )'%(
-                indent, newline
-            )
-        )
-
-    def putimport_tss( self, tssloc, modname ):
-        self.cr()
-        line = '%s = _m.importas( %r, %r, globals() )' % (modname, tssloc, modname)
-        self.outfd.write( line )
-
-    def putimport( self, modnames ):
-        self.cr()
-        self.outfd.write( 'import %s' % modnames )
-
-    def putinherit( self, tssloc ):
-        self.cr()
-        self.outfd.write( '_m.inherit( %r, globals() )' % tssloc, )
-
-    def implement_interface( self, implements, interfaces ):
-        interfaces_ = {}
-        [ interfaces_.setdefault( ifname, [] ).append( methodname ) 
-          for ifname, methodname in interfaces ]
-        # Define interface class, hitch the methods and register the plugin
-        for i in range(len(implements)) :
-            # Define interface implementer class
-            module, interfacename, pluginname = implements[i]
-            infcls = 'Interface_' + str(i+1)
-            codeblock = interfaceClass % (
-                    module, interfacename, infcls, interfacename, pluginname)
-            # hitch methods with interface class
-            methodlines = [ '  %s = %s' % ( method, method )
-                            for method in interfaces_.get(interfacename, []) ]
-            self.putblock( u'\n'.join( [codeblock] + methodlines ) )
-            # register the interface providing object
-            line = '_m.register( %s(), %s, %r )' % (infcls, interfacename, pluginname)
-            self.putstatement(line)
-
-    def useinterface( self, module, interfacename, pluginname, name ):
-        line = 'from  %s import %s' % ( module, interfacename )
-        self.putstatement(line)
-        if isinstance(pluginname, tuple) :
-            line = '%s = _m.use( %s, _m.evalexprs(%s, %r) )' % (
-                        name, interfacename, pluginname[0], pluginname[1] )
-        else :
-            line = '%s = _m.use( %s, %r )' % ( name, interfacename, pluginname )
-        self.putstatement(line)
+            self.outline( 'return _m.popbuf()' )
 
     def footer( self, tsshash, tssfile ):
-        self.cr()
-        self.outfd.write( footer % (tsshash, tssfile) )
+        self.outline( footer % (tsshash, tssfile) )
 
     def finish( self ):
         self.pytext = self.outfd.getvalue()
-

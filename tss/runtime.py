@@ -9,32 +9,26 @@
 #       _m, _tsshash, _tssfile
 #       StringIO, tss
 
-gsm = getGlobalSiteManager()
+from  tss.functions     import *
+
+__all__ = [ 'StackMachine', 'Namespace' ]
+__all__.extend([ fn for fn in globals().keys() if fn.startswith('tss_') ])
 
 class StackMachine( object ) :
     def __init__( self, ifile, compiler, tssconfig={} ):
-        self.tssconfig  = tssconfig
-        self.encoding = self.tssconfig['input_encoding']
+        self.compiler, self.tssconfig  = compiler, tssconfig
+        self.encoding = compiler.encoding
         self.escfilters = tssconfig.get( 'escfilters', {} )
-        self.def_escfilters = tssconfig['escape_filters']
+        self.def_escfilters = tssconfig.get('escape_filters', [])
 
         self.bufstack = [ [] ]
         self.ifile = ifile
-        self.compiler = compiler
         self.cssindent = u''
 
     #---- Stack machine instructions
-
+ 
     def setencoding( self, encoding ):
-        #self.encoding = encoding
-        pass
-
-    #def encodetext( self, text ) :
-    #    if isinstance( text, unicode) :
-    #        return text
-    #    else :
-    #        text = repr( text )
-    #        return unicode( text, self.encoding )
+        self.encoding = encoding
 
     def upindent( self, up=u'' ) :
         self.cssindent += up

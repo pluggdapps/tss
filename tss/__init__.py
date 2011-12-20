@@ -16,7 +16,12 @@
 * Normalization function for configuration values.
 """
 
-from  tss.utils     import ConfigDict, asbool, parsecsv
+import codecs
+from   os.path       import basename, join, dirname
+from   datetime      import datetime as dt
+
+from   tss.utils     import ConfigDict, asbool, parsecsv
+from   tss.parser    import TSSParser
 
 __version__ = '0.1dev'
 
@@ -113,8 +118,14 @@ def normalizeconfig( config ):
 class Translator( object ):
     """Translate TSS file(s) to CSS
 
-    `tssconfig` parameter will find its way into every object translating
-    this TSS text into CSS text.
+    ``tssloc``,
+        Location of Tayra template file, either as relative directory or as
+        asset specification.
+    ``tsstext``,
+        Tayra template text. It is assumed in unicode format. 
+    ``tssconfig``,
+        Configuration parameter, will find its way into every object defined by
+        the templating engine.
     """
     def __init__( self, tssloc=None, tsstext=None, tssconfig={} ):
         self.tssconfig = dict( defaultconfig.items() )
@@ -151,7 +162,7 @@ class Translator( object ):
         context['_tsscontext'] = context
         module = self.compiler.exectss( context=context )
         # Fetch parent-most module
-        entry = getattr( module.self, entryfn )
+        entry = getattr( module, entryfn )
         args = context.get( '_mainargs', [] )
         kwargs = context.get( '_mainkwargs', {} )
         css = entry( *args, **kwargs ) if callable( entry ) else u''
@@ -159,9 +170,9 @@ class Translator( object ):
 
 
 def tss_cmdline( tssloc, **kwargs ):
-    from tss.compiler       import Compiler
+    from tss.compiler import Compiler
 
-    tssconfig = deepcopy( dict( defaultconfig.items() ))
+    tssconfig = dict( defaultconfig.items() )
     # directories, module_directory, devmod
     tssconfig.update( kwargs )
 
@@ -174,11 +185,9 @@ def tss_cmdline( tssloc, **kwargs ):
     debuglevel = tssconfig.pop( 'debuglevel', 0 )
     show = tssconfig.pop( 'show', False )
     dump = tssconfig.pop( 'dump', False )
-    encoding = tssconfig['input_encoding']
 
     # Setup parser
-    tssparser = TSSParser(
-                    tssconfig=tssconfig, debug=debuglevel )
+    tssparser = TSSParser( tssconfig=tssconfig, debug=debuglevel )
     comp = Compiler( tssloc=tssloc, tssconfig=tssconfig, tssparser=tssparser )
     pyfile = comp.tssfile+'.py'
     cssfile = basename( comp.tssfile ).rsplit('.', 1)[0] + '.css'
@@ -193,19 +202,19 @@ def tss_cmdline( tssloc, **kwargs ):
         tu.show()
     elif dump :
         tu = comp.toast()
-        rctext =  tu.dump()
-        if rctext != codecs.open( comp.tssfile, encoding=encoding ).read() :
+        rctext = tu.dump()
+        if rctext != codecs.open( comp.tssfile, encoding=comp.encoding ).read() :
             print "Mismatch ..."
         else : print "Success ..."
     else :
         print "Generating py / CSS file ... "
-        pytext = comp.topy( tsshash=comp.tsslookup.tsshash )
+        pytext = comp.topy( tsshash=comp.tsslookup.tsshash ) # pytext in unicode
         # Intermediate file should always be encoded in 'utf-8'
-        codecs.open(pyfile, mode='w', encoding=DEFAULT_ENCODING).write(pytext)
+        codecs.open( pyfile, mode='w', encoding=comp.encoding ).write(pytext)
 
         t = Translator( tssloc=tssloc, tssconfig=tssconfig )
         css = t( context=context )
-        codecs.open( cssfile, mode='w', encoding=encoding).write( css )
+        codecs.open( cssfile, mode='w', encoding=comp.encoding).write( css )
 
         # This is for measuring performance
         st = dt.now()

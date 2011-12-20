@@ -17,3 +17,7 @@
   them ?
 
 * CSS3 `media-queries` for atrules to be supported.
+
+* Compare with SCSS options with Tayra styles.
+
+* Code generation optimization.

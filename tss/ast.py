@@ -19,6 +19,7 @@ To walk throug the AST,
 # Todo   : None
 
 import sys, re
+from   tss.utils        import charset
 
 class ASTError( Exception ):
     pass
@@ -42,10 +43,12 @@ class Node( object ):
         """
         return tuple()
 
-    def validate( self ):
+    def validate( self, context ):
         """Validate this node and all the children nodes. Expected to be called
-        before processing the nodes."""
-        pass
+        before processing the nodes.
+        
+        If no issue with validation, returns True"""
+        return True
 
     def headpass1( self, igen ):
         """Pre-processing phase 1, useful to implement multi-pass compilers"""
@@ -118,7 +121,7 @@ class Node( object ):
         append that to the parent buffer."""
         igen.pushbuf()
         compute()
-        igen.popcompute( astext=astext )
+        igen.popappend( astext=astext )
         return None
 
     def getroot( self ):
@@ -265,8 +268,61 @@ class Tss( NonTerminal ):
         # Set parent attribute for children, should be last statement !!
         self.setparent( self, self.children() )
 
+        # Initialization
+        self.blocks = []    # List of all styling blocks { ... }
+
+    def _hascontent( self ) :
+        """Check whether the main of the template page contains valid content,
+        if not then the `main` function should not be generated at all."""
+        return True
+
+    def _main( self, igen, signature=u'', *args, **kwargs ):
+        """Generate the main function only when there is valid content in the
+        global scope.
+        """
+        igen.cr()
+        if self._hascontent() :
+            # main function signature
+            signature = signature and signature.strip(', \t') or u''
+            u', '.join([ signature, '*args', '**kwargs' ])
+            line = "def main( %s ) :" % signature
+            igen.putstatement( line )
+            igen.codeindent( up='  ' )
+            igen.pushbuf()
+            # Main function's children
+            self.stylesheets and self.stylesheets.generate(igen, *args, **kwargs)
+            # finish main function
+            igen.flushtext()
+            igen.popreturn( astext=True )
+            igen.codeindent( down='  ' )
+        else :
+            igen.flushtext()
+
     def children( self ):
         return self._nonterms
+
+    def validate( self, context=None ):
+        c = context or Context()
+        return all([ x.validate(c) for x in self.children() ])
+
+    def headpass1( self, igen ):
+        NonTerminal.headpass1( self, igen )
+
+    def headpass2( self, igen ):
+        igen.initialize()
+        NonTerminal.headpass2( self, igen )
+
+    def generate( self, igen, *args, **kwargs ):
+        self.tsshash = kwargs.pop( 'tsshash', u'' )
+        self.tssfile = self.parser.tssparser.tssfile
+        self._main( igen, signature=u'', *args, **kwargs )
+
+    def tailpass( self, igen ):
+        igen.cr()
+        NonTerminal.tailpass( self, igen )
+        igen.comment( "---- Footer", force=True )
+        igen.footer( self.tsshash, self.tssfile )
+        igen.finish()
 
     def dump( self, context=None ):
         c = context or Context()
@@ -460,6 +516,14 @@ class Charset( NonTerminal ):
 
     def children( self ):
         return self._nonterms + self._terms
+
+    def headpass2( self, igen ):
+        parseline = self.charset_sym.dump(None) + self.nonterm.dump(None)
+        defencoding = self.parser.tssparser.encoding
+        igen.encoding = charset( parseline=parseline, encoding=defencoding )
+        igen.comment( "-*- coding: %s -*-" % igen.encoding, force=True )
+        igen.putstatement( "_m.setencoding( %r )" % igen.encoding )
+        NonTerminal.headpass2( self, igen )
 
     def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
@@ -696,10 +760,12 @@ class Medium( NonTerminal ) :
 class AtRule( NonTerminal ) :
     """class to handle `atrule` grammar."""
 
-    def __init__( self, parser, atkeyword, expr, semi, block ) :
+    def __init__( self, parser, atkeyword, expr, semi, block, ruleblock ) :
         NonTerminal.__init__( self, parser, atkeyword, expr, semi, block )
         self._nonterms = \
-            self.atkeyword, self.expr, self.block = atkeyword, expr, block
+            self.atkeyword, self.expr, self.block, \
+            self.openbrace, self.rulesets, self.closebrace = \
+                (atkeyword, expr, block) + ruleblock
         self._nonterms = filter( None, self._nonterms )
         self._terms = (self.SEMICOLON,) = (semi,)
         self._terms = filter( None, self._terms )
@@ -707,8 +773,9 @@ class AtRule( NonTerminal ) :
         self.setparent( self, self.children() )
 
     def children( self ):
-        return filter(
-            None, (self.atkeyword, self.expr, self.SEMICOLON, self.block) )
+        x = ( self.atkeyword, self.expr, self.SEMICOLON, self.block,
+              self.openbrace, self.rulesets, self.closebrace )
+        return filter( None, x )
 
     def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
@@ -1185,12 +1252,16 @@ class Priority( NonTerminal ):
 
 #---- Expressions
 
-class Expr( NonTerminal ):
-    """class to handle `expr` grammar."""
+# Gotcha : There is a possibility of deep recursion here, although for
+# practical inputs, it may not happen.
 
-    def __init__( self, parser, expr, binaryexpr ) :
-        NonTerminal.__init__( self, parser, expr, binaryexpr )
-        self._nonterms = self.expr, self.binaryexpr = expr, binaryexpr
+class Exprs( NonTerminal ):
+    """class to handle `exprs` grammar."""
+
+    def __init__( self, parser, exprs, compop, op, expr ) :
+        NonTerminal.__init__( self, parser, exprs, compop, op, expr )
+        self._nonterms = \
+            self.exprs, self.compop, self.op, self.expr = exprs, compop, op, expr
         self._nonterms = filter( None, self._nonterms )
         # Set parent attribute for children, should be last statement !!
         self.setparent( self, self.children() )
@@ -1199,38 +1270,45 @@ class Expr( NonTerminal ):
         return self._nonterms
 
     def dump( self, context ):
-        return ''.join([ x.dump(context) for x in self.flatten() ])
+        return ''.join([ x.dump(context) for x in self.children() ])
 
     def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
+        lead = ' ' * offset
+        buf.write( lead + 'exprs: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
-        [ x.show(buf, offset, attrnames, showcoord) for x in self.flatten() ]
+        buf.write('\n')
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
-    def flatten( self ) :
-        return NonTerminal.flatten( self, 'expr', 'binaryexpr' )
+    def computable( self ):
+        """Return a boolean whether the expression is of computable format."""
+        pass
 
 
-# Gotcha : There is a possibility of deep recursion here, although for
-# practical inputs, it may not happen.
+class Expr( NonTerminal ):
+    """class to handle `expr` grammar."""
 
-class BinaryExpr( NonTerminal ):
-    """class to handle `binaryexpr` grammar."""
-
-    def __init__( self, parser, nonterm, binaryexpr1, op, binaryexpr2 ) :
-        NonTerminal.__init__( self, parser )
-        self._nonterms = \
-            self.nonterm, self.binaryexpr1, self.operator, self.binaryexpr2 = \
-                nonterm, binaryexpr1, op, binaryexpr2
-        self._nonterms = filter( None, self._nonterms )
+    def __init__( self, parser, nonterm ) :
+        NonTerminal.__init__( self, parser, nonterm )
+        self._nonterms = (self.nonterm,) = (nonterm,)
         # Set parent attribute for children, should be last statement !!
         self.setparent( self, self.children() )
 
     def children( self ):
         return self._nonterms
 
+    def validate( self, context ):
+        if getattr( context, 'funccall', False ) :
+            if not isinstance(self.nonterm, ExtnExpr) :
+                raise Exception('Expression substitution not allowed !!')
+        return True
+
+    def dump( self, context ):
+        return ''.join([ x.dump(context) for x in self.children() ])
+
     def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
-        buf.write( lead + 'binaryexpr: ' )
+        buf.write( lead + 'expr: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
@@ -1324,9 +1402,41 @@ class FuncCall( NonTerminal ):
     def children( self ):
         return self._nonterms
 
+    def validate( self, context=None ):
+        context.funccall = True
+        rc = all([ x.validate(context) for x in self.children() ])
+        context.funccall = False
+        return rc
+
+    def generate( self, igen, *args, **kwargs ):
+        fnstr = self.dump(None)
+        kwargs.update( inlineexpr=True ) if fnstr.startswith('tss_') else None
+        [ x.generate( igen, *args, **kwargs ) for x in self.children() ]
+
     def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
         buf.write( lead + 'func_call: ' )
+        if showcoord:
+            buf.write( ' (at %s)' % self.coord )
+        buf.write('\n')
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
+
+
+class CompOperator( NonTerminal ):
+    """class to handle `compoperator` grammar."""
+
+    def __init__( self, parser, nonterm ) :
+        NonTerminal.__init__( self, parser, nonterm )
+        self._nonterms = (self.nonterm,) = (nonterm,)
+        # Set parent attribute for children, should be last statement !! 
+        self.setparent( self, self.children() )
+
+    def children( self ):
+        return self._nonterms
+
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
+        lead = ' ' * offset
+        buf.write( lead + 'compoperator: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
@@ -1354,26 +1464,6 @@ class Operator( NonTerminal ):
         [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
 
 
-#class Unary( NonTerminal ):
-#    """class to handle `unary_oper` grammar."""
-#
-#    def __init__( self, parser, nonterm ) :
-#        NonTerminal.__init__( self, parser, nonterm )
-#        self._nonterm = ( self.nonterm, ) = (nonterm,)
-#        # Set parent attribute for children, should be last statement !! 
-#        self.setparent( self, self.children() )
-#
-#    def children( self ):
-#        return self._nonterms
-#
-#    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
-#        lead = ' ' * offset
-#        buf.write( lead + 'unary_oper: ' )
-#        if showcoord:
-#            buf.write( ' (at %s)' % self.coord )
-#        buf.write('\n')
-#        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.children() ]
-
 #---- Terminals
 
 class TerminalS( NonTerminal ):
@@ -1393,7 +1483,7 @@ class TerminalS( NonTerminal ):
 
     def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
-        buf.write( lead + 'TerminalS: (%s)' % type(self.TERMINAL) )
+        buf.write( lead + 'TerminalS: %s' % self.TERMINAL.__class__ )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
@@ -1642,11 +1732,7 @@ class SUFFIXMATCH( Terminal ) : pass
 class SUBSTRINGMATCH( Terminal ) : pass
 
 class STRING( Terminal ) : pass
-class NUMBER( Terminal ) : pass
 class PERCENTAGE( Terminal ) : pass
-class DIMENSION( Terminal ):
-    def dump( self, context ):
-        return self.terminal.__str__()
 
 class UNICODERANGE( Terminal ) : pass
 class DLIMIT( Terminal ) : pass
@@ -1686,27 +1772,37 @@ class HEXCOLOR( Terminal ) : pass
 class NAME( Terminal ) : pass
 class FUNCTIONEND( Terminal ) : pass
 
-#---------------------------- Terminal Literals --------------------------
+#---- Terminals abstracted as DIMENSION
+class DIMENSION( Terminal ):
+    def dump( self, context ):
+        funccall = getattr( context, 'funccall', False )
+        return ('%r' % self.terminal) if funccall else self.terminal
 
-class Dimension( object ):
-    def __init__( self, value ):
-        self.value = value
-    def __str__( self ):
-        return self.value
+class EMS( DIMENSION ): pass
+class EXS( DIMENSION ): pass
+class LENGTHPX( DIMENSION ): pass
+class LENGTHCM( DIMENSION ): pass
+class LENGTHMM( DIMENSION ): pass
+class LENGTHIN( DIMENSION ): pass
+class LENGTHPT( DIMENSION ): pass
+class LENGTHPC( DIMENSION ): pass
+class ANGLEDEG( DIMENSION ): pass
+class ANGLERAD( DIMENSION ): pass
+class ANGLEGRAD( DIMENSION ): pass
+class TIMEMS( DIMENSION ): pass
+class TIMES( DIMENSION ): pass
+class FREQHZ( DIMENSION ): pass
+class FREQKHZ( DIMENSION ): pass
+class PERCENTAGE( DIMENSION ): pass
 
-class Ems( Dimension ): pass
-class Exs( Dimension ): pass
-class LengthPX( Dimension ): pass
-class LengthCM( Dimension ): pass
-class LengthMM( Dimension ): pass
-class LengthIN( Dimension ): pass
-class LengthPT( Dimension ): pass
-class LengthPC( Dimension ): pass
-class AngleDEG( Dimension ): pass
-class AngleRAD( Dimension ): pass
-class AngleGRAD( Dimension ): pass
-class TimeMS( Dimension ): pass
-class TimeS( Dimension ): pass
-class FreqHZ( Dimension ): pass
-class FreqKHZ( Dimension ): pass
-class Percentage( Dimension ): pass
+#---- Special Terminals
+
+class NUMBER( Terminal ): pass
+
+class HASH( DIMENSION ):
+    regex = re.compile( r'#([0-9a-zA-Z]{3}|[0-9a-zA-Z]{6})' )
+    def checkhex( self ):
+        return self.regex.match( self.terminal ) != None 
+    def dump( self, context ):
+        funccall = getattr( context, 'funccall', False )
+        return ('%r' % self.terminal) if funccall else self.terminal
