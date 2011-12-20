@@ -1,0 +1,7 @@
+<!--[if IE]>
+html>body .ymemfldinfo { margin: 0.38em 0 0 7.1em; }
+<![endif]-->
+
+@media screen [anything] {
+    div { color : blue ;; background-color : black }
+}
