@@ -1,0 +1,10 @@
+@-webkit-keyframes overlayTransition {
+  from {
+    width:0px;
+    border-color:#FF5400;
+  }
+  to {
+    width:25px;
+    border-color:#FF5400;
+  }
+}

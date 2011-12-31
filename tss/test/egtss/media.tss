@@ -1,0 +1,10 @@
+@media screen and (-webkit-min-device-pixel-ratio0)
+{
+  #hdADV-bar{
+    background-color:#ccc;
+    padding:0px 0px 3px 0;
+    float:left;
+    width:100%;font-family:arial;
+    height:18px;
+  }
+}

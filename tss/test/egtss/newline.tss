@@ -1,0 +1,4 @@
+* html #TB_overlay { /* ie6 hack */
+     position: absolute;
+}
+
