@@ -25,7 +25,7 @@ from   tss.parser    import TSSParser
 
 __version__ = '0.1dev'
 
-DEFAULT_ENCODING = 'utf-8'
+DEFAULT_ENCODING = 'utf-8-sig'
 DEVMOD = False
 
 defaultconfig = ConfigDict()
@@ -79,7 +79,7 @@ defaultconfig['module_directory']        = {
                 "intermediate python file."
 }
 defaultconfig['input_encoding']          = {
-    'default' : 'utf-8',
+    'default' : 'utf-8-sig',
     'types'   : (str,),
     'help'    : "Default input encoding for .tss file."
 }
@@ -210,11 +210,12 @@ def tss_cmdline( tssloc, **kwargs ):
         print "Generating py / CSS file ... "
         pytext = comp.topy( tsshash=comp.tsslookup.tsshash ) # pytext in unicode
         # Intermediate file should always be encoded in 'utf-8'
-        codecs.open( pyfile, mode='w', encoding=comp.encoding ).write(pytext)
+        enc = comp.encoding.rstrip('-sig') # -sig is used to interpret BOM
+        codecs.open( pyfile, mode='w', encoding=enc ).write(pytext)
 
         t = Translator( tssloc=tssloc, tssconfig=tssconfig )
         css = t( context=context )
-        codecs.open( cssfile, mode='w', encoding=comp.encoding).write( css )
+        codecs.open( cssfile, mode='w', encoding=enc ).write( css )
 
         # This is for measuring performance
         st = dt.now()

@@ -1,0 +1,10 @@
+.adbl-flash-other-frames-link{color:#C0C0C0;cursor:pointer;text-decoration:none;width:100%:;}
+/* Expression identifier has namespace resolution `.` */
+.cdTPop{
+    font-size:13px;overflow:auto;max-height:350px;_height:expression(this.scrollHeight>350 ? "350px":"auto");
+     height: expression(document.body.scrollHeight > document.body.offsetHeight ? document.body.scrollHeight : document.body.offsetHeight + 'px');
+}
+/* class identifier begins with number */
+.rpm .price.2liner {
+	padding-top: 1em; border: 1px solid red;
+}

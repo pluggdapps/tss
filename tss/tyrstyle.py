@@ -14,7 +14,9 @@
 
 from   optparse             import OptionParser
 from   os.path              import isfile
+
 import tss
+from   tss.parser           import TSSParser
 
 def _option_parse() :
     """Parse the options and check whether the semantics are correct."""
@@ -48,7 +50,7 @@ def main() :
     if options.version :
         print tss.__version__
 
-    elif args and isfile( args[0] ) :
+    elif args and isfile(args[0]) :
         tss.tss_cmdline(
             args[0],
             args=options.args,
@@ -57,6 +59,9 @@ def main() :
             show=options.show,
             dump=options.dump,
         )
+    elif int(options.debug) :
+        TSSParser( tssconfig={}, debug=int(options.debug) )
+
 if __name__ == '__main__' :
     main()
 

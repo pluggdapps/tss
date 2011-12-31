@@ -15,14 +15,17 @@
 # Todo   :
 
 
-import re, sys, logging
+import re, sys, logging, codecs
 import ply.lex
 from   ply.lex      import TOKEN
 
 from   tss.ast      import EMS, EXS, LENGTHPX, LENGTHCM, LENGTHMM, LENGTHIN, \
                            LENGTHPT, LENGTHPC, ANGLEDEG, ANGLERAD, ANGLEGRAD, \
                            TIMEMS, TIMES, FREQHZ, FREQKHZ, PERCENTAGE, NUMBER, \
-                           HASH
+                           HASH, PLUS, MINUS, STAR, FWDSLASH, PERCENT, EQUAL, \
+                           GT, LT, TILDA, COMMA, COLON, DOT, DLIMIT, AND, OR, \
+                           PREFIXSTAR, QMARK, INCLUDES, DASHMATCH, \
+                           PREFIXMATCH, SUFFIXMATCH, SUBSTRINGMATCH
 
 log = logging.getLogger( __name__ )
 
@@ -57,8 +60,34 @@ class TSSLexer( object ) :
         newlines = len( token.value.split(u'\n') ) - 1
         if newlines > 0 : token.lexer.lineno += newlines
     
-    def _preprocess( self, text ) :
+    def _preprocess( self, text ):
         return text
+
+    def _lookahead( self, t, chars ):
+        for i in self.lexer.lexdata[t.lexpos:] :
+            if i in chars : return i
+        return None
+
+    def _lexanalysis( self, t ):
+        if self.directive_scan and self.directive_scan[-1] == t.type :
+            self.directive_scan.pop(-1)
+        if t.type in ['MEDIA_SYM', 'ATKEYWORD', 'PAGE_SYM'] :
+            self.directive_scan.append( 'OPENBRACE' )
+        elif t.type in self.directives :
+            self.directive_scan.append( 'SEMICOLON' )
+
+    def _inselector( self, t ):
+        if self.directive_scan == [] and self._lookahead(t, '{;}') == '{' :
+            return True
+        else :
+            return False
+
+    def _inproperty( self, t ):
+        if self.directive_scan == [] and self._lookahead(t, '{;}') in ';}' :
+            if self._lookahead(t, ':;') == ':' :
+                return True
+        else :
+            return False
 
     ## --------------- Interface methods ------------------------------
 
@@ -71,6 +100,9 @@ class TSSLexer( object ) :
         self.error_func = error_func
         self.filename = filename
         self.conf = conf
+        # Context based lexical analysis
+        self.directive_scan = []
+        self.propprefix_scan = []
 
     def build( self, **kwargs ) :
         """ Builds the lexer from the specification. Must be called after the
@@ -100,41 +132,50 @@ class TSSLexer( object ) :
 
     # States
     states = (
+               ( 'cdata', 'exclusive' ),
                ( 'cssblock', 'exclusive' ),
              )
 
     ## Tokens recognized by the TSSLexer
+    directives = ( 'CHARSET_SYM', 'IMPORT_SYM', 'NAMESPACE_SYM', 'PAGE_SYM',
+                   'MEDIA_SYM', 'FONT_FACE_SYM', 'ATKEYWORD' )
     tokens = (
-        # Directives
-        'CHARSET_SYM', 'IMPORT_SYM', 'NAMESPACE_SYM', 'PAGE_SYM', 'MEDIA_SYM',
-        'FONT_FACE_SYM', 'IMPORTANT_SYM',
-        'ATKEYWORD',
+        # Sufffix
+        'IMPORTANT_SYM',
 
         # Comments
-        'CDO', 'CDC', 'S', 'COMMENT',
+        'CDO', 'CDC', 'CDATATEXT', 'S', 'COMMENT',
 
         # CSS Expressions
         'IDENT', 'URI', 'FUNCTION',
 
-        # Selector
-        'HASH', 'INCLUDES', 'DASHMATCH', 'PREFIXMATCH', 'SUFFIXMATCH',
+        # Selector Combinator
+        'SEL_GT', 'SEL_PLUS', 'SEL_TILDA',
+        # Selector tokens
+        'SEL_IDENT', 'SEL_STRING', 'SEL_HASH', 'SEL_STAR', 'SEL_COLON', 'DOT',
+        # Selector attributes
+        'SEL_EQUAL', 'INCLUDES', 'DASHMATCH', 'PREFIXMATCH', 'SUFFIXMATCH',
         'SUBSTRINGMATCH',
 
         # Literals
-        'STRING', 'NUMBER', 'DIMENSION', 'UNICODERANGE', 'DLIMIT',
+        'STRING', 'NUMBER', 'DIMENSION', 'UNICODERANGE', 'HASH', 'QMARK', #'DLIMIT', 
+
+        # Multi character token 
+        'AND', 'OR',
 
         # Single character token 
-        'PLUS', 'GT', 'LT', 'TILDA', 'COMMA', 'COLON', 'MINUS', 'EQUAL', 'DOT',
-        'STAR', 'SEMICOLON', 'FWDSLASH',
+        'COMMA', 'EQUAL', 'COLON', 'SEMICOLON', 
+        'PREFIXSTAR', 
+        'PLUS', 'MINUS', 'STAR', 'FWDSLASH', 'GT', 'LT',
         'OPENBRACE', 'CLOSEBRACE', 'OPENSQR', 'CLOSESQR',
         'OPENPARAN', 'CLOSEPARAN',
 
         # Extension tokens
-        'EXTN_EXPR', 'EXTN_STATEMENT',
-        'PERCENT', 'FUNCTIONSTART', 'FUNCTIONBODY',
-        'IFCONTROL','ELIFCONTROL',  'ELSECONTROL',
-        'FORCONTROL', 'WHILECONTROL',
-    )
+        #'EXTN_EXPR', 'EXTN_STATEMENT',
+        #'PERCENT', 'FUNCTIONSTART', 'FUNCTIONBODY',
+        #'IFCONTROL','ELIFCONTROL',  'ELSECONTROL',
+        #'FORCONTROL', 'WHILECONTROL',
+    ) + directives
 
     # CSS3 tokens
 
@@ -148,7 +189,7 @@ class TSSLexer( object ) :
     wspac    = r'[%s]*' % ws
     wspace   = r'[%s]+' % ws
 
-    num		 = r'([0-9]+|[0-9]*\.[0-9]+)'
+    num		 = r'([0-9]*\.)?[0-9]+'
     nonascii = r'[\200-\377]'
     uni      = r'\B\d\D\s\S\w\W'
     unicode_ = r'(\\[0-9a-f]{1,6}[ \t\r\n\f]?)'
@@ -165,8 +206,8 @@ class TSSLexer( object ) :
     range_   = r'\?{1,6}|[0-9a-f](\?{0,5}|[0-9a-f](\?{0,4}|' + \
                   r'[0-9a-f](\?{0,3}|[0-9a-f](\?{0,2}|[0-9a-f](\??|[0-9a-f])))))'
 
+    @TOKEN( wspace )
     def t_S( self, t ) :
-        r'[ \t\r\n\f]+'
         self._incrlineno( t )
         return t
 
@@ -175,74 +216,57 @@ class TSSLexer( object ) :
         self._incrlineno( t )
         return t
 
+    @TOKEN( r'@charset' + wspac )
     def t_CHARSET_SYM( self, t ) :
-        r'@charset'
+        self._incrlineno( t )
+        self._lexanalysis(t)
         return t
 
+    @TOKEN( r'@import' + wspac )
     def t_IMPORT_SYM( self, t ) :
-        r'@import'
+        self._incrlineno( t )
+        self._lexanalysis(t)
         return t
 
+    @TOKEN( r'@namespace' + wspac )
     def t_NAMESPACE_SYM( self, t ) :
-        r'@namespace'
+        self._incrlineno( t )
+        self._lexanalysis(t)
         return t
 
-    def t_PAGE_SYM( self, t ) :
-        r'@page'
-        return t
-
+    @TOKEN( r'@media' + wspac )
     def t_MEDIA_SYM( self, t ) :
-        r'@media'
+        self._incrlineno( t )
+        self._lexanalysis(t)
         return t
 
+    @TOKEN( r'@page' + wspac )
+    def t_PAGE_SYM( self, t ) :
+        self._incrlineno( t )
+        self._lexanalysis(t)
+        return t
+
+    @TOKEN( r'@font-face' + wspac )
     def t_FONT_FACE_SYM( self, t ) :
-        r'@font-face'
+        self._incrlineno( t )
+        self._lexanalysis(t)
         return t
 
-    @TOKEN( r'!' + wspac + 'important' )
+    # Gotcha : Browser specific @-rules
+    @TOKEN( r'@' + ident + wspac )
+    def t_ATKEYWORD( self, t ) :
+        self._incrlineno( t )
+        self._lexanalysis(t)
+        return t
+
+    @TOKEN( r'!' + wspac + 'important' + wspac )
     def t_IMPORTANT_SYM( self, t ) :
         self._incrlineno( t )
         return t
 
-    def t_FUNCTIONSTART( self, t ) :
-        r'@def'
-        self._incrlineno( t )
-        t.lexer.push_state('cssblock')
-        return t
-
-    def t_IFCONTROL( self, t ) :
-        r'@if.*(?!\{[\n\r])\{'
-        self._incrlineno( t )
-        t.lexer.push_state('cssblock')
-        return t
-
-    def t_ELIFCONTROL( self, t ) :
-        r'@elif.*(?!\{[\n\r])\{'
-        self._incrlineno( t )
-        t.lexer.push_state('cssblock')
-        return t
-
-    def t_ELSECONTROL( self, t ) :
-        r'@else.*(?!\{[\n\r])\{'
-        self._incrlineno( t )
-        t.lexer.push_state('cssblock')
-        return t
-
-    def t_FORCONTROL( self, t ) :
-        r'@for.*(?!\{[\n\r])\{'
-        self._incrlineno( t )
-        t.lexer.push_state('cssblock')
-        return t
-
-    def t_WHILECONTROL( self, t ) :
-        r'@while.*(?!\{[\n\r])\{'
-        self._incrlineno( t )
-        t.lexer.push_state('cssblock')
-        return t
-
-    # Gotcha : Browser specific @-rules
-    @TOKEN( r'@' + ident )
-    def t_ATKEYWORD( self, t ) :
+    def t_CDO( self, t ):
+        r'<!--'
+        t.lexer.push_state( 'cdata' )
         return t
 
     # Gotcha : Confirmance issue : urls are not comfirming to string format
@@ -252,36 +276,43 @@ class TSSLexer( object ) :
         self._incrlineno( t )
         return t
 
-    def t_CDO( self, t ) :
-        r'<!--'
-        return t
-
-    def t_CDC( self, t ) :
-        r'-->'
-        return t
-
+    @TOKEN( r'~=' + wspac )
     def t_INCLUDES( self, t ) :
-        r'~='
+        self._incrlineno( t )
+        t.value = (INCLUDES, t.value)
         return t
 
+    @TOKEN( r'\|=' + wspac )
     def t_DASHMATCH( self, t ) :
-        r'\|='
+        self._incrlineno( t )
+        t.value = (DASHMATCH, t.value)
         return t
 
+    @TOKEN( r'\^=' + wspac )
     def t_PREFIXMATCH( self, t ) :
-        r'\^='
+        self._incrlineno( t )
+        t.value = (PREFIXMATCH, t.value)
         return t
 
+    @TOKEN( r'\$=' + wspac )
     def t_SUFFIXMATCH( self, t ) :
-        r'\$='
+        self._incrlineno( t )
+        t.value = (SUFFIXMATCH, t.value)
         return t
 
+    @TOKEN( r'\*=' + wspac )
     def t_SUBSTRINGMATCH( self, t ) :
-        r'\*='
+        self._incrlineno( t )
+        t.value = (SUBSTRINGMATCH, t.value)
         return t
 
+    rehex = re.compile( r'#([0-9a-zA-Z]{3}|[0-9a-zA-Z]{6})' )
     @TOKEN( r'\#' + name )
     def t_HASH( self, t ) :
+        if self._inselector(t) :
+            t.type = 'SEL_HASH'
+        elif self.rehex.match( t.value ) == None :
+            assert 'Must be a hexadecimal number'
         t.value = (HASH, t.value)
         return t
 
@@ -389,14 +420,16 @@ class TSSLexer( object ) :
     @TOKEN( string )
     def t_STRING( self, t ) :
         self._incrlineno( t )
+        if self._inselector(t) : t.type = 'SEL_STRING'
         return t
 
-    @TOKEN( ident + r'\(' )
+    @TOKEN( '%s(\.%s)*\(%s' % (ident, ident, wspac) )
     def t_FUNCTION( self, t ) : 
         return t
 
     @TOKEN( ident )
     def t_IDENT( self, t ) :
+        if self._inselector(t) : t.type = 'SEL_IDENT'
         return t
 
     @TOKEN( r'U\+%s{1,6}-%s{1,6}' % (hexnum, hexnum) )
@@ -411,6 +444,138 @@ class TSSLexer( object ) :
         t.value = t.value
         return t
 
+    def t_EXTN_STATEMENT( self, t ) :
+        r'^[ ]*\$.*$'
+        return t
+
+    def t_EXTN_EXPR( self, t ) :
+        r'\$\{([^}])*\}'
+        return t
+
+    @TOKEN( r'\+' + wspac )
+    def t_PLUS( self, t ):
+        self._incrlineno( t )
+        if self._inselector(t) : t.type = 'SEL_PLUS'
+        t.value = (PLUS, t.value)
+        return t
+
+    @TOKEN( r'-' + wspac )
+    def t_MINUS( self, t ):
+        self._incrlineno( t )
+        t.value = (MINUS, t.value)
+        return t
+
+    @TOKEN( r'\*' + wspac )
+    def t_STAR( self, t ):
+        self._incrlineno( t )
+        if self._inselector( t ) :
+            t.type = 'SEL_STAR'
+        elif self._inproperty( t ) :
+            t.type = 'PREFIXSTAR'
+        t.value = (STAR, t.value)
+        return t
+
+    @TOKEN( r'\/' + wspac )
+    def t_FWDSLASH( self, t ):
+        self._incrlineno( t )
+        t.value = (FWDSLASH, t.value)
+        return t
+
+    @TOKEN( r'%' + wspac )
+    def t_PERCENT( self, t ):
+        self._incrlineno( t )
+        t.value = (PERCENT, t.value)
+        return t
+
+    @TOKEN( r'=' + wspac )
+    def t_EQUAL( self, t ):
+        self._incrlineno( t )
+        if self._inselector(t) : t.type = 'SEL_EQUAL'
+        t.value = (EQUAL, t.value)
+        return t
+
+    @TOKEN( r'>' + wspac )
+    def t_GT( self, t ):
+        self._incrlineno( t )
+        if self._inselector(t) : t.type = 'SEL_GT'
+        t.value = (GT, t.value)
+        return t
+
+    @TOKEN( r'<' + wspac )
+    def t_LT( self, t ):
+        self._incrlineno( t )
+        t.value = (LT, t.value)
+        return t
+
+    @TOKEN( r'~' + wspac )
+    def t_TILDA( self, t ):
+        self._incrlineno( t )
+        t.type = 'SEL_TILDA'
+        t.value = (TILDA, t.value)
+        return t
+
+    @TOKEN( r'&&' + wspac )
+    def t_AND( self, t ):
+        self._incrlineno( t )
+        t.value = (AND, t.value)
+        return t
+
+    @TOKEN( r'\|\|' + wspac )
+    def t_OR( self, t ):
+        self._incrlineno( t )
+        t.value = (OR, t.value)
+        return t
+
+    @TOKEN( r'\?' + wspac )
+    def t_QMARK( self, t ):
+        self._incrlineno( t )
+        t.value = (QMARK, t.value)
+        return t
+
+    @TOKEN( r',' + wspac )
+    def t_COMMA( self, t ):
+        self._incrlineno( t )
+        t.value = (COMMA, t.value)
+        return t
+
+    @TOKEN( r':' + wspac )
+    def t_COLON( self, t ):
+        self._incrlineno( t )
+        if self._inselector(t) : t.type = 'SEL_COLON'
+        t.value = (COLON, t.value)
+        return t
+
+    @TOKEN( r'\.' + wspac )
+    def t_DOT( self, t ):
+        self._incrlineno( t )
+        t.value = (DOT, t.value)
+        return t
+
+    @TOKEN( r';' + wspac )
+    def t_SEMICOLON( self, t ):
+        self._incrlineno( t )
+        self._lexanalysis(t)
+        return t
+
+    @TOKEN( r'\{' )
+    def t_OPENBRACE( self, t ):
+        self._lexanalysis(t)
+        return t
+
+    @TOKEN( r'\}' )
+    def t_CLOSEBRACE( self, t ):
+        return t
+
+    def t_cdata_CDATATEXT( self, t ):           # <--- `cdata` state
+        r'(.|[\r\n\f])+(?=-->)'
+        self._incrlineno( t )
+        return t
+
+    def t_cdata_CDC( self, t ) :
+        r'-->'
+        t.lexer.pop_state()
+        return t
+
     def t_cssblock_FUNCTIONSTART( self, t ):
         r'@def'
         return t
@@ -420,37 +585,60 @@ class TSSLexer( object ) :
         t.lexer.pop_state()
         return t
 
-    def t_EXTN_STATEMENT( self, t ) :
-        r'^[ ]*\$.*$'
+    t_OPENSQR    = r'\['
+    t_CLOSESQR   = r'\]'
+    t_OPENPARAN  = r'\('
+    t_CLOSEPARAN = r'\)'
+
+    #---- Unused TOKENS
+
+    @TOKEN( r'[&\?\|!]' + wspac )
+    def t_DLIMIT( self, t ):
+        self._incrlineno( t )
+        t.value = (DLIMIT, t.value)
         return t
 
-    def t_EXTN_EXPR( self, t ) :
-        r'\$\{([^}])*\}'
+    def t_FUNCTIONSTART( self, t ) :
+        r'@def'
+        self._incrlineno( t )
+        t.lexer.push_state('cssblock')
         return t
 
+    def t_IFCONTROL( self, t ) :
+        r'@if.*(?!\{[\n\r])\{'
+        self._incrlineno( t )
+        t.lexer.push_state('cssblock')
+        return t
 
-    t_PLUS          = r'\+'
-    t_MINUS         = r'-'
-    t_STAR          = r'\*'
-    t_FWDSLASH      = r'\/'
-    t_PERCENT       = r'%'
-    t_EQUAL         = r'='
-    t_GT            = r'>'
-    t_LT            = r'<'
-    t_TILDA         = r'~'
-    t_COMMA         = r','
-    t_COLON         = r':'
-    t_DOT           = r'\.'
-    t_SEMICOLON     = r';'
-    t_OPENBRACE     = r'\{'
-    t_CLOSEBRACE    = r'\}'
-    t_OPENSQR       = r'\['
-    t_CLOSESQR      = r'\]'
-    t_OPENPARAN     = r'\('
-    t_CLOSEPARAN    = r'\)'
-    t_DLIMIT        = r'[&\?\|!]'
+    def t_ELIFCONTROL( self, t ) :
+        r'@elif.*(?!\{[\n\r])\{'
+        self._incrlineno( t )
+        t.lexer.push_state('cssblock')
+        return t
+
+    def t_ELSECONTROL( self, t ) :
+        r'@else.*(?!\{[\n\r])\{'
+        self._incrlineno( t )
+        t.lexer.push_state('cssblock')
+        return t
+
+    def t_FORCONTROL( self, t ) :
+        r'@for.*(?!\{[\n\r])\{'
+        self._incrlineno( t )
+        t.lexer.push_state('cssblock')
+        return t
+
+    def t_WHILECONTROL( self, t ) :
+        r'@while.*(?!\{[\n\r])\{'
+        self._incrlineno( t )
+        t.lexer.push_state('cssblock')
+        return t
 
     def t_error( self, t ):
+        msg = 'Illegal character %s' % repr(t.value[0])
+        self._error(msg, t)
+
+    def t_cdata_error( self, t ):
         msg = 'Illegal character %s' % repr(t.value[0])
         self._error(msg, t)
 
@@ -479,7 +667,7 @@ if __name__ == "__main__":
             print "Lexing file %r ..." % f
             tsslex = TSSLexer( errfoo, filename=f )
             tsslex.build()
-            tsslex.input( codecs.open(f, encoding='utf-8').read() )
+            tsslex.input( codecs.open(f, encoding='utf-8-sig').read() )
             tok = _fetchtoken( tsslex, stats )
             while tok :
                 tok = _fetchtoken( tsslex, stats )

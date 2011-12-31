@@ -1,3 +1,5 @@
-<!-- -->  
-
-<!-- -->
+/* IE7 adjustments */
+<!--[if IE]>
+html>body .ymemforminput { padding: 0; margin-top: 8px; }
+html>body .ybbrotr .hd { margin-bottom: 10px; }
+<![endif]-->

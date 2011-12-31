@@ -119,3 +119,6 @@ def charset( tssfile=None, parseline=None, encoding=None ):
     if parseline :
         encoding = parseline[8:].strip('\'\" \t\r\n;')
     return encoding
+
+def throw( lineno, lexpos, msg ) :
+    raise Exception( msg + ( 'at %s, %s' % (lineno, lexpos) ))

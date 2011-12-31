@@ -1,0 +1,38 @@
+.listThick {
+  background:-webkit-gradient(linear, left top, left bottom, color-stop(0%,#f1f1f1), color-stop(30%,#ffffff));
+  background:-moz-linear-gradient(top, #f1f1f1 0%, #ffffff 30%);
+  filter:progid:DXImageTransform.Microsoft.gradient(startColorstr='#f1f1f1', endColorstr='#ffffff');
+}
+/* Plain string not allowed as content property value */
+.clearfix:after {
+  content: .;
+}
+
+/* Dangling comma in property value
+a {
+  font-family: Verdana, Arial,;
+}
+
+/* Escaping new line
+a {
+	padding-left:4px;\
+}
+
+/* Semicolon separator for expression value */
+a {
+	font-family: verdana; arial, sans-serif;
+}
+
+/* Gibberish comments, nested comments, backslashed comments */
+
+ .clearfix {display: inline-table;}
+ /* backslash hack hides from IE mac \*/ LEAVE THIS COMMENT RIGHT HERE! 
+ * html .clearfix {height: 1%;}
+ .clearfix {display: block;}
+ /* end backslash hack */ 
+
+/****************************************************************************/ 
+* New UI for Site Info Page 
+* Move search box to top and new layout for opp ads, 
+* search terms and site stats
+*/

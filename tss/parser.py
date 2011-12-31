@@ -16,7 +16,7 @@
 # Notes  :
 # Todo   : 
 
-import logging, sys
+import logging, sys, codecs
 from   copy         import deepcopy
 from   types        import StringType
 from   os.path      import splitext, dirname
@@ -25,6 +25,7 @@ from   hashlib      import sha1
 import ply.yacc
 from   tss.lexer    import TSSLexer
 from   tss.ast      import *
+from   utils        import throw
 
 log = logging.getLogger( __name__ )
 rootdir = dirname( __file__ )
@@ -115,7 +116,9 @@ class TSSParser( object ):
 
         # parse and get the Translation Unit
         debuglevel = self.debug or debuglevel
-        self.tu = self.parser.parse( text, lexer=self.tsslex, debug=debuglevel )
+        tracking = True if self.debug or debuglevel else False
+        self.tu = self.parser.parse(
+            text, lexer=self.tsslex, debug=debuglevel, tracking=tracking )
         return self.tu
 
     # ------------------------- Private functions -----------------------------
@@ -138,8 +141,12 @@ class TSSParser( object ):
     # ---------- Precedence and associativity of operators --------------------
 
     precedence = (
-        ('left', 'ARITH'),
-        ('left', 'FACTOR'),
+        ('left', 'COMMA'), 
+        ('left', 'QMARK', 'COLON'),
+        ('left', 'EQUAL'),
+        ('left', 'GT', 'LT', 'AND', 'OR'),
+        ('left', 'PLUS', 'MINUS'),
+        ('left', 'STAR', 'FWDSLASH'),
         ('right', 'UNARY'),
     )
 
@@ -157,326 +164,294 @@ class TSSParser( object ):
         return rc
 
     def p_tss( self, p ):
-        """tss          : stylesheets"""
-        p[0] = Tss( p.parser, p[1] )
-
-    def p_stylesheets_1( self, p ):
-        """stylesheets  : stylesheet"""
-        p[0] = StyleSheets( p.parser, None, p[1] )
-
-    def p_stylesheets_2( self, p ):
-        """stylesheets  : stylesheets stylesheet"""
-        p[0] = StyleSheets( p.parser, p[1], p[2] )
+        """tss          : stylesheet
+                        | tss stylesheet"""
+        args = [ p[1], p[2] ] if len(p)==3 else [ None, p[1] ]
+        p[0] = Tss( p.parser, *args )
+        # TODO : Makes sure that charset, import and namespace non-terminals
+        # does not follow rulesets, media, page, font_face non-terminals
 
     def p_stylesheet( self, p ):
-        """stylesheet   : cdatas
+        """stylesheet   : cdata
                         | charset
                         | namespace
-                        | statement"""
-        p[0] = StyleSheet( p.parser, p[1] )
-
-    def p_statement( self, p ):
-        """statement    : page
                         | font_face
                         | import
                         | media
                         | atrule
                         | rulesets
-                        | functiondef
-                        | extn_statement
                         | wc"""
-        p[0] = Statement( p.parser, p[1] )
+        p[0] = StyleSheet( p.parser, p[1] )
 
     #---- CDATA
 
-    def p_cdatas( self, p ):
-        """cdatas       : cdata
-                        | cdatas cdata"""
-        args = [ p[1], p[2] ] if len(p) == 3 else [ None,  p[1] ]
-        p[0] = Cdatas( p.parser, *args )
+    def p_cdata_1( self, p ):
+        """cdata        : CDO CDATATEXT CDC"""
+        x = [ (CDO, 1), (CDATATEXT, 2), (CDC, 3) ]
+        p[0] = Cdata( p.parser, *self._buildterms(p, x) )
 
-    def p_cdata( self, p ):
-        """cdata        : cdo cdc
-                        | cdo cdata_conts cdc"""
-        args = [ p[1], p[2], p[3] ] if len(p) == 4 else [ p[1], None, p[2] ]
-        p[0] = Cdata( p.parser, *args )
-
-    def p_cdata_conts( self, p ):
-        """cdata_conts  : cdata_cont
-                        | cdata_conts cdata_cont"""
-        args = [ p[1], p[2] ] if len(p) == 3 else [ None, p[1] ]
-        p[0] = CdataConts( p.parser, *args )
-
-    def p_cdata_cont( self, p ):
-        """cdata_cont   : exprs
-                        | any
-                        | operator
-                        | compoperator"""
-        p[0] = CdataCont( p.parser, p[1] )
+    def p_cdata_2( self, p ):
+        """cdata        : CDO CDC"""
+        x = [ (CDO, 1), None, (CDC, 2) ]
+        p[0] = Cdata( p.parser, *self._buildterms(p, x) )
 
     #---- @charset 
 
     def p_charset( self, p ):
-        """charset      : charset_sym string SEMICOLON
-                        | charset_sym extn_expr SEMICOLON"""
-        p[0] = Charset( p.parser, p[1], p[2], SEMICOLON(p.parser, p[3]) )
+        """charset      : CHARSET_SYM string SEMICOLON"""
+        x = [ (CHARSET_SYM, 1), p[2], (SEMICOLON, 3) ]
+        p[0] = Charset( p.parser, *self._buildterms(p, x) )
 
     #---- @import
 
-    def p_import( self, p ):
-        """import       : import_sym string mediums SEMICOLON
-                        | import_sym uri mediums SEMICOLON
-                        | import_sym extn_expr mediums SEMICOLON
-                        | import_sym string SEMICOLON
-                        | import_sym uri SEMICOLON
-                        | import_sym extn_expr SEMICOLON"""
-        args = [ p[1], p[2], p[3], SEMICOLON(p.parser, p[4])
-               ] if len(p) == 5 else [ p[1],p[2],None,SEMICOLON(p.parser,p[3]) ]
-        p[0] = Import( p.parser, *args )
+    def p_import_1( self, p ):
+        """import       : IMPORT_SYM string IDENT SEMICOLON
+                        | IMPORT_SYM uri IDENT SEMICOLON"""
+        mediums = Mediums( p.parser, None, None, None, IDENT(p.parser, p[3]) )
+        x = [ (IMPORT_SYM, 1), p[2], mediums, (SEMICOLON, 4) ]
+        p[0] = Import( p.parser, *self._buildterms(p, x) )
+
+    def p_import_2( self, p ):
+        """import       : IMPORT_SYM string IDENT S SEMICOLON
+                        | IMPORT_SYM uri IDENT S SEMICOLON"""
+        mediums = Mediums( p.parser, None, None, None, IDENT(p.parser, p[3]) )
+        x = [ (IMPORT_SYM, 1), p[2], mediums, (SEMICOLON, 4) ]
+        p[0] = Import( p.parser, *self._buildterms(p, x) )
+        
+    def p_import_3( self, p ):
+        """import       : IMPORT_SYM string IDENT mediums SEMICOLON
+                        | IMPORT_SYM uri IDENT mediums SEMICOLON"""
+        mediums = Mediums( p.parser, None, None, None, IDENT(p.parser, p[3]) )
+        p[4].pushident( mediums )
+        x = [ (IMPORT_SYM, 1), p[2], p[4], (SEMICOLON, 5) ]
+        p[0] = Import( p.parser, *self._buildterms(p, x) )
+
+    def p_import_4( self, p ):
+        """import       : IMPORT_SYM string SEMICOLON
+                        | IMPORT_SYM uri SEMICOLON"""
+        x = [ (IMPORT_SYM, 1), p[2], None, (SEMICOLON, 3) ]
+        p[0] = Import( p.parser, *self._buildterms(p, x) )
+
 
     #---- @namespace
 
     def p_namespace_1( self, p ):
-        """namespace    : namespace_sym nmprefix string SEMICOLON
-                        | namespace_sym nmprefix uri SEMICOLON
-                        | namespace_sym nmprefix extn_expr SEMICOLON"""
-        p[0] = Namespace(p.parser, p[1], p[2], p[3], SEMICOLON(p.parser, p[4]))
+        """namespace    : NAMESPACE_SYM ident string SEMICOLON
+                        | NAMESPACE_SYM ident uri SEMICOLON"""
+        x = [ (NAMESPACE_SYM, 1), p[2], p[3], (SEMICOLON, 4) ]
+        p[0] = Namespace( p.parser, *self._buildterms(p, x) )
 
     def p_namespace_2( self, p ):
-        """namespace    : namespace_sym string SEMICOLON
-                        | namespace_sym uri SEMICOLON
-                        | namespace_sym extn_expr SEMICOLON"""
-        p[0] = Namespace(p.parser, p[1], None, p[2], SEMICOLON(p.parser, p[4]))
-
-    def p_nmprefix( self, p ):
-        """nmprefix     : ident
-                        | extn_expr"""
-        p[0] = NamePrefix( p.parser, p[1] )
-
-    #---- @page
-
-    def p_page_1( self, p ):
-        """page         : page_sym IDENT pseudo_page block"""
-        p[0] = Page( p.parser, p[1], IDENT(p.parser, p[2]), p[3], p[4] )
-
-    def p_page_2( self, p ):
-        """page         : page_sym ident block
-                        | page_sym pseudo_page block"""
-        p[0] = Page( p.parser, p[1], None, p[2], p[3] )
-
-    def p_pseudo_page( self, p ):
-        """pseudo_page  : COLON ident"""
-        p[0] = PseudoPage( p.parser, COLON(p.parser, p[1]), p[2] )
-
-    #---- @font_face
-
-    def p_font_face( self, p ):
-        """font_face    : font_face_sym block"""
-        p[0] = FontFace( p.parser, p[1], p[2] )
+        """namespace    : NAMESPACE_SYM string SEMICOLON
+                        | NAMESPACE_SYM uri SEMICOLON"""
+        x = [ (NAMESPACE_SYM, 1), None, p[2], (SEMICOLON, 3) ]
+        p[0] = Namespace( p.parser, *self._buildterms(p, x) )
 
     #---- @media
 
     def p_media_1( self, p ):
-        """media        : media_sym mediums openbrace rulesets closebrace"""
-        decl = Declarations( p.parser, None, None, p[4] )
-        bloc = Block( p.parser, p[3], decl, p[5] )
-        p[0] = Media( p.parser, p[1], p[2], bloc )
+        """media        : MEDIA_SYM exprs openbrace rulesets closebrace"""
+        x = [ (MEDIA_SYM, 1), p[2], p[3], p[4], p[5] ]
+        p[0] = Media( p.parser, *self._buildterms(p, x) )
 
     def p_media_2( self, p ):
-        """media        : media_sym mediums openbrace closebrace"""
-        bloc = Block( p.parser, p[3], None, p[4] )
-        p[0] = Media( p.parser, p[1], p[2], bloc )
+        """media        : MEDIA_SYM exprs openbrace closebrace"""
+        x = [ (MEDIA_SYM, 1), p[2], p[3], None, p[4] ]
+        p[0] = Media( p.parser, *self._buildterms(p, x) )
 
-    def p_mediums( self, p ):
-        """mediums      : medium
-                        | mediums medium
-                        | mediums comma medium"""
-        if len(p) == 4 :
-            args = [ p[1], p[2], p[3] ]
-        else :
-            args = [ p[1], None, p[2] ] if len(p) == 3 else [None, None, p[1]]
-        p[0] = Mediums( p.parser, *args )
+    def p_mediums_1( self, p ):
+        """mediums      : mediums S COMMA IDENT"""
+        cls, val = p[3]
+        x = [ p[1], (S, 2), cls(p.parser, val), (IDENT, 4) ]
+        p[0] = Mediums( p.parser, *self._buildterms(p, x) )
 
-    def p_medium( self, p ):
-        """medium       : exprs
-                        | any"""
-        p[0] = Medium( p.parser, p[1] )
+    def p_mediums_2( self, p ):
+        """mediums      : mediums COMMA IDENT"""
+        cls, val = p[2]
+        x = [ p[1], None, cls(p.parser, val), (IDENT, 3) ]
+        p[0] = Mediums( p.parser, *self._buildterms(p, x) )
+
+    def p_mediums_3( self, p ):
+        """mediums      : COMMA IDENT"""
+        cls, val = p[1]
+        x = [ None, None, cls(p.parser, val), (IDENT, 2) ]
+        p[0] = Mediums( p.parser, *self._buildterms(p, x) )
+
+    def p_mediums_4( self, p ):
+        """mediums      : S COMMA IDENT"""
+        cls, val = p[2]
+        x = [ None, (S, 2), cls(p.parser, val), (IDENT, 3) ]
+        p[0] = Mediums( p.parser, *self._buildterms(p, x) )
+
+    #---- @page
+
+    def p_page_1( self, p ):
+        """page         : PAGE_SYM ident block"""
+        x = [ (PAGE_SYM, 1), p[2], None, None, p[3] ]
+        p[0] = Page( p.parser, *self._buildterms(p, x) )
+
+    def p_page_2( self, p ):
+        """page         : PAGE_SYM COLON ident block"""
+        cls, val = p[2]
+        x = [ (PAGE_SYM, 1), None, cls(p.parser, val), p[3], p[4] ]
+        p[0] = Page( p.parser, *self._buildterms(p, x) )
+
+    def p_page_3( self, p ):
+        """page         : PAGE_SYM ident COLON ident block"""
+        cls, val = p[3]
+        x = [ (PAGE_SYM, 1), p[2], cls(p.parser, val), p[4], p[4] ]
+        p[0] = Page( p.parser, *self._buildterms(p, x) )
+
+    def p_page_4( self, p ):
+        """page         : PAGE_SYM block"""
+        x = [ (PAGE_SYM, 1), None, None, None, p[2] ]
+        p[0] = Page( p.parser, *self._buildterms(p, x) )
+
+    #---- @font_face
+
+    def p_font_face( self, p ):
+        """font_face    : FONT_FACE_SYM block"""
+        x = [ (FONT_FACE_SYM, 1), p[2] ]
+        p[0] = FontFace( p.parser, *self._buildterms(p, x) )
 
     #---- atrule
 
     # Gotcha : Handle generic at-rules
     def p_atrule_1( self, p ):
-        """atrule       : atkeyword exprs block"""
-        p[0] = AtRule( p.parser, p[1], p[2], None, p[3], None )
+        """atrule       : ATKEYWORD expr block"""
+        x = [ (ATKEYWORD, 1), p[2], p[3], None, None, ]
+        p[0] = AtRule( p.parser, *self._buildterms(p, x) )
 
     def p_atrule_2( self, p ):
-        """atrule       : atkeyword exprs SEMICOLON"""
-        semi = SEMICOLON(p.parser, p[3])
-        p[0] = AtRule( p.parser, p[1], p[2], semi, None, None )
+        """atrule       : ATKEYWORD expr SEMICOLON"""
+        x = [ (ATKEYWORD, 1), p[2], None, (SEMICOLON, 3), None, ]
+        p[0] = AtRule( p.parser, *self._buildterms(p, x) )
 
     def p_atrule_3( self, p ):
-        """atrule       : atkeyword block"""
-        p[0] = AtRule( p.parser, p[1], None, None, p[2], None )
+        """atrule       : ATKEYWORD block"""
+        x = [ (ATKEYWORD, 1), None, p[2], None, None, ]
+        p[0] = AtRule( p.parser, *self._buildterms(p, x) )
 
     def p_atrule_4( self, p ):
-        """atrule       : atkeyword SEMICOLON"""
-        semi = SEMICOLON(p.parser, p[2])
-        p[0] = AtRule( p.parser, p[1], None, semi, None, None )
+        """atrule       : ATKEYWORD SEMICOLON"""
+        x = [ (ATKEYWORD, 1), None, None, (SEMICOLON, 2), None, ]
+        p[0] = AtRule( p.parser, *self._buildterms(p, x) )
 
     def p_atrule_5( self, p ):
-        """atrule       : atkeyword exprs openbrace rulesets closebrace"""
-        rule = ( p[3], p[4], p[5] ) 
-        p[0] = AtRule( p.parser, p[1], p[2], None, None, rule )
+        """atrule       : ATKEYWORD expr openbrace rulesets closebrace"""
+        term = ATKEYWORD(p.parser, p[1])
+        p[0] = AtRule( p.parser, term, p[2], None, None, (p[3], p[4], p[5]) )
 
     def p_atrule_6( self, p ):
-        """atrule       : atkeyword openbrace rulesets closebrace"""
-        rule = ( p[2], p[3], p[4] ) 
-        p[0] = AtRule( p.parser, p[1], None, None, None, rule )
+        """atrule       : ATKEYWORD openbrace rulesets closebrace"""
+        term = ATKEYWORD(p.parser, p[1])
+        p[0] = AtRule( p.parser, term, None, None, None, (p[2], p[3], p[4]) )
 
     #---- ruleset
 
+    # TODO : only `&` is allowd in DLIMIT terminal, this constraint should
+    # be checked inside `ElementName` class
     def p_rulesets( self, p ):
-        """rulesets     : ruleset 
-                        | rulesets ruleset"""
+        """rulesets     : ruleset
+                        | page
+                        | rulesets ruleset
+                        | rulesets page"""
         args = [ p[1], p[2] ] if len(p) == 3 else [ None, p[1] ]
-        p[0] = RuleSets( p.parser, *args )
+        p[0] = Rulesets( p.parser, *args )
 
     def p_ruleset_1( self, p ):
         """ruleset      : block
-                        | ifelfiblock
-                        | forblock
-                        | whileblock"""
-        p[0] = RuleSet( p.parser, None, p[1], None )
-
-    def p_ruleset_2( self, p ):
-        """ruleset      : selectors block"""
-        p[0] = RuleSet( p.parser, p[1], p[2], None )
-
-    def p_ruleset_3( self, p ):
-        """ruleset      : PERCENT ident block
-                        | PERCENT ident exprs block"""
-        perc = PERCENT( p.parser, p[1] )
-        args = [ perc, p[2], p[3], p[4] 
-               ] if len(p) == 5 else [ perc, p[2], None, p[3] ]
-        p[0] = RuleSet( p.parser, None, None, args )
+                        | selectors block"""
+        args = [ p[1], p[2] ] if len(p) == 3 else [ None, p[1] ]
+        p[0] = Ruleset( p.parser, *args )
 
     def p_selectors_1( self, p ):
         """selectors    : selector"""
-        p[0] = Selectors( p.parser, None, None, p[1] )
+        x = [ None, None, p[1] ]
+        p[0] = Selectors( p.parser, *self._buildterms(p, x) )
 
     def p_selectors_2( self, p ):
-        """selectors    : selectors comma"""
-        p[0] = Selectors( p.parser, p[1], p[2], None )
-
-    def p_selectors_3( self, p ):
-        """selectors    : selectors comma selector"""
-        p[0] = Selectors( p.parser, p[1], p[2], p[3] )
+        """selectors    : selectors COMMA selector"""
+        cls, val = p[2]
+        x = [ p[1], cls(p.parser, val), p[3] ]
+        p[0] = Selectors( p.parser, *self._buildterms(p, x) )
 
     def p_selector_1( self, p ):
-        """selector     : simple_selector"""
+        """selector     : simpselector"""
         p[0] = Selector( p.parser, None, None, p[1] )
 
     def p_selector_2( self, p ):
-        """selector     : selector simple_selector"""
+        """selector     : selector simpselector"""
         p[0] = Selector( p.parser, p[1], None, p[2] )
 
     def p_selector_3( self, p ):
-        """selector     : selector combinator simple_selector"""
-        p[0] = Selector( p.parser, p[1], p[2], p[3] )
+        """selector     : selector SEL_GT simpselector
+                        | selector SEL_PLUS simpselector
+                        | selector SEL_TILDA simpselector"""
+        cls, value =p[2]
+        p[0] = Selector( p.parser, p[1], cls(p.parser, value), p[3] )
 
-    def p_simple_selector_1( self, p ):
-        """simple_selector  : element_name"""
-        p[0] = SimpleSelector( p.parser, None, p[1], None, None )
+    def p_simpselector_1( self, p ):
+        """simpselector : sel_ident"""
+        p[0] = SimpleSelector( p.parser, None, None, p[1], None, None, None )
 
-    def p_simple_selector_2( self, p ):
-        """simple_selector  : extender"""
-        p[0] = SimpleSelector( p.parser, None, None, p[1], None )
+    def p_simpselector_2( self, p ):
+        """simpselector : sel_hash"""
+        p[0] = SimpleSelector( p.parser, None, None, None, p[1], None, None )
 
-    def p_simple_selector_3( self, p ):
-        """simple_selector  : extn_expr"""
-        p[0] = SimpleSelector( p.parser, None, None, None, p[1] )
+    def p_simpselector_3( self, p ):
+        """simpselector : SEL_STAR"""
+        cls, value = p[1]
+        term = cls(p.parser, value)
+        p[0] = SimpleSelector( p.parser, term, None, None, None, None, None )
 
-    def p_simple_selector_4( self, p ):
-        """simple_selector  : simple_selector extender"""
-        p[0] = SimpleSelector( p.parser, p[1], None, p[2], None )
+    def p_simpselector_4( self, p ):
+        """simpselector : DOT sel_ident"""
+        cls, value = p[1]
+        term = cls(p.parser, value)
+        p[0] = SimpleSelector( p.parser, None, term, p[2], None, None, None )
 
-    def p_element_name( self, p ):
-        """element_name : ident
-                        | star
-                        | DLIMIT"""
-        # only `&` is allowd in DLIMIT terminal, this constraint should be
-        # checked inside `ElementName` class
-        if isinstance( p[1], Terminal ):
-            p[0] = ElementName( p.parser, None, p[1] )
-        else :
-            p[0] = ElementName( p.parser, p[1], None )
+    def p_simpselector_5( self, p ):
+        """simpselector : attrib"""
+        p[0] = SimpleSelector( p.parser, None, None, None, None, p[1], None )
 
-    def p_combinator( self, p ):
-        """combinator   : plus
-                        | gt
-                        | tilda"""
-        p[0] = Combinator( p.parser, p[1] )
-
-    def p_extender( self, p ):
-        """extender     : hash
-                        | class
-                        | attrib
-                        | pseudo"""
-        p[0] = Extender( p.parser, p[1] )
-
-    def p_class( self, p ):
-        """class        : DOT IDENT
-                        | DOT IDENT wc"""
-        x = [ (DOT, 1), (IDENT, 2) ]
-        x.append( p[3] if len(p) == 4 else None )
-        p[0] = Class( p.parser, *self._buildterms( p, x ) )
+    def p_simpselector_6( self, p ):
+        """simpselector : pseudo"""
+        p[0] = SimpleSelector( p.parser, None, None, None, None, None, p[1] )
 
     def p_attrib_1( self, p ):
-        """attrib       : opensqr ident attr_oper attr_val closesqr"""
+        """attrib       : opensqr sel_ident attroperator sel_ident closesqr
+                        | opensqr sel_ident attroperator sel_string closesqr"""
         p[0] = Attrib( p.parser, p[1], p[2], p[3], p[4], p[5] )
 
     def p_attrib_2( self, p ):
-        """attrib       : opensqr ident closesqr"""
+        """attrib       : opensqr sel_ident closesqr"""
         p[0] = Attrib( p.parser, p[1], p[2], None, None, p[3] )
 
-    def p_attroper( self, p ):
-        """attr_oper    : equal
-                        | includes
-                        | dashmatch
-                        | prefixmatch
-                        | suffixmatch
-                        | substringmatch"""
-        p[0] = AttrOper( p.parser, p[1] )
+    def p_attroperator( self, p ):
+        """attroperator : SEL_EQUAL
+                        | INCLUDES
+                        | DASHMATCH
+                        | PREFIXMATCH
+                        | SUFFIXMATCH
+                        | SUBSTRINGMATCH"""
+        cls, value = p[1]
+        p[0] = AttrOperator( p.parser, cls(p.parser, value) )
 
-    def p_attrval( self, p ):
-        """attr_val     : ident
-                        | string"""
-        p[0] = AttrVal( p.parser, p[1] )
+    def p_pseudo_1( self, p ):
+        """pseudo       : SEL_COLON sel_ident
+                        | SEL_COLON func_call"""
+        cls, value = p[1]
+        p[0] = Pseudo( p.parser, None, cls(p.parser, value), p[2] )
 
-    def p_pseudo( self, p ):
-        """pseudo       : COLON pseudo_name
-                        | COLON COLON pseudo_name"""
-        args = [ COLON(p.parser, p[1]), COLON(p.parser, p[2]), p[3] 
-               ] if len(p) == 4 else [ COLON(p.parser, p[1]), None, p[2] ]
-        p[0] = Pseudo( p.parser, *args )
+    def p_pseudo_2( self, p ):
+        """pseudo       : SEL_COLON SEL_COLON sel_ident
+                        | SEL_COLON SEL_COLON func_call"""
+        cls1, val1 = p[1]
+        cls2, val2 = p[2]
+        p[0] = Pseudo( p.parser, cls1(p.parser,val1), cls2(p.parser,val2), p[3] )
 
-    def p_pseudoname_1( self, p ):
-        """pseudo_name  : ident"""
-        p[0] = PseudoName( p.parser, p[1], None, None, None )
-
-    def p_pseudoname_2( self, p ):
-        """pseudo_name  : function simple_selector closeparan
-                        | function string closeparan
-                        | function number closeparan"""
-        p[0] = PseudoName( p.parser, None, p[1], p[2], p[3] )
-
-    #---- block
-
-    #def p_blocks( self, p ):
-    #    """blocks       : block
-    #                    | blocks block"""
-    #    args = [ p[1], p[2] ] if len(p) == 3 else [ None, p[1] ]
-    #    p[0] = Blocks( p.parser, *args )
+    #---- Declaration block
 
     def p_block( self, p ):
         """block        : openbrace declarations closebrace
@@ -484,220 +459,204 @@ class TSSParser( object ):
         args = [ p[1], p[2], p[3] ] if len(p) == 4 else [ p[1], None, p[2] ]
         p[0] = Block( p.parser, *args )
 
-    def p_declarations( self, p ):
+    def p_declarations_1( self, p ):
         """declarations : declaration
-                        | rulesets
-                        | extn_statement
-                        | declarations semicolon
-                        | declarations semicolon declaration
-                        | declarations semicolon rulesets
-                        | declarations semicolon extn_statement"""
-        if len(p) == 4 :
-            args = [ p[1], p[2], p[3] ]
-        elif len(p) == 3 :
-            args = [ p[1], p[2], None ]
-        else :
-            args = [ None, None, p[1] ]
-        p[0] = Declarations( p.parser, *args )
+                        | rulesets"""
+        p[0] = Declarations( p.parser, None, None, None, p[1] )
+
+    def p_declarations_2( self, p ):
+        """declarations : declarations SEMICOLON"""
+        term = SEMICOLON( p.parser, p[2] )
+        p[0] = Declarations( p.parser, p[1], term, None, None )
+
+    def p_declarations_3( self, p ):
+        """declarations : declarations SEMICOLON declaration"""
+        term = SEMICOLON( p.parser, p[2] )
+        p[0] = Declarations( p.parser, p[1], term, None, p[3] )
+
+    def p_declarations_4( self, p ):
+        """declarations : declarations SEMICOLON wc"""
+        term = SEMICOLON( p.parser, p[2] )
+        p[0] = Declarations( p.parser, p[1], term, p[3], None )
+
+    def p_declarations_5( self, p ):
+        """declarations : declarations SEMICOLON wc declaration"""
+        term = SEMICOLON( p.parser, p[2] )
+        p[0] = Declarations( p.parser, p[1], term, p[3], p[4] )
+
+    def p_declarations_6( self, p ):
+        """declarations : declarations rulesets"""
+        p[0] = Declarations( p.parser, p[1], None, None, p[3] )
 
     def p_declaration_1( self, p ):
-        """declaration  : ident colon exprs prio
-                        | ident colon exprs"""
-        args = [ None, p[1], None, p[2], p[3], p[4] 
-               ] if len(p) == 5 else [ None, p[1], None, p[2], p[3], None ]
-        p[0] = Declaration( p.parser, *args )
+        """declaration  : ident COLON exprs prio"""
+        cls, value = p[2]
+        x = [ None, p[1], cls(p.parser, value), p[3], p[4] ]
+        p[0] = Declaration( p.parser, *self._buildterms(p, x) )
 
     def p_declaration_2( self, p ):
-        """declaration  : extn_expr colon exprs prio
-                        | extn_expr colon exprs"""
-        args = [ None, None, p[1], p[2], p[3], p[4] 
-               ] if len(p) == 5 else [ None, None, p[1], p[2], p[3], None ]
-        p[0] = Declaration( p.parser, *args )
+        """declaration  : ident COLON exprs"""
+        cls, value = p[2]
+        x = [ None, p[1], cls(p.parser, value), p[3], None ]
+        p[0] = Declaration( p.parser, *self._buildterms(p, x) )
 
     def p_declaration_3( self, p ):
-        """declaration  : star ident colon exprs prio
-                        | star ident colon exprs"""
-        args = [ p[1], p[2], None, p[3], p[4], p[5] 
-               ] if len(p) == 6 else [ p[1], p[2], None, p[3], p[4], None ]
-        p[0] = Declaration( p.parser, *args )
+        """declaration  : PREFIXSTAR ident COLON exprs prio"""
+        cls1, val1 = p[1]
+        cls2, val2 = p[3]
+        x = [ cls1(p.parser, val1), p[2], cls2(p.parser, val2), p[4], p[5] ]
+        p[0] = Declaration( p.parser, *self._buildterms(p, x) )
+
+    def p_declaration_4( self, p ):
+        """declaration  : PREFIXSTAR ident COLON exprs"""
+        cls1, val1 = p[1]
+        cls2, val2 = p[3]
+        x = [ cls1(p.parser, val1), p[2], cls2(p.parser, val2), p[4], None ]
+        p[0] = Declaration( p.parser, *self._buildterms(p, x) )
 
     def p_prio( self, p ):
-        """prio         : important_sym"""
-        p[0] = Priority( p.parser, p[1] )
+        """prio         : IMPORTANT_SYM
+                        | IMPORTANT_SYM wc"""
+        x = [ (IMPORTANT_SYM, 1), p[2]
+            ] if len(p)==3 else [ (IMPORTANT_SYM, 1), None ]
+        p[0] = Priority( p.parser, *self._buildterms(p, x) )
 
     #---- expressions
 
-    #    """exprs        : expr
-    #                    | exprs expr
-    #                    | exprs compoperator expr
-    #                    | exprs operator expr"""
-    def p_exprs( self, p ):
-        """exprs        : expr
-                        | unaryexpr
-                        | exprs expr
-                        | exprs unaryexpr
-                        | exprs compoperator expr
-                        | exprs compoperator unaryexpr
-                        | exprs operator expr
-                        | exprs operator unaryexpr"""
-        if len(p) == 2 :
-            args = [ None, None, None, p[1] ]
-        elif len(p) == 3 :
-            args = [ p[1], None, None, p[2] ]
-        elif isinstance( p[2], Operator ) :
-            args = [ p[1], None, p[2], p[3] ]
-        else :
-            args = [ p[1], p[2], None, p[3] ]
-        p[0] = Exprs( p.parser, *args )
+    def p_exprs_1( self, p ):
+        """exprs        : expr"""
+        p[0] = Exprs( p.parser, None, None, p[1] )
 
-    def p_expr( self, p ):
-        """expr         : term
-                        | extn_expr"""
-        p[0] = Expr( p.parser, p[1] )
+    def p_exprs_2( self, p ):
+        """exprs        : exprs expr"""
+        p[0] = Exprs( p.parser, p[1], None, p[2] )
 
-    def p_unaryexpr_1( self, p ):
-        """unaryexpr    : openparan exprs closeparan"""
-        p[0] = UnaryExpr( p.parser, None, None, (p[1], p[2], p[3]) )
+    def p_exprs_3( self, p ):
+        """exprs        : exprs COMMA expr"""
+        cls, value = p[2]
+        term = cls(p.parser, value)
+        p[0] = Exprs( p.parser, p[1], term, p[3] )
 
-    def p_unaryexpr_2( self, p ):
-        """unaryexpr    : plus expr %prec UNARY
-                        | minus expr %prec UNARY"""
-        p[0] = UnaryExpr( p.parser, p[1], p[2], None )
+    def p_expr_1( self, p ):
+        """expr         : term"""
+        args = [ p[1], None, None, None, None ]
+        p[0] = Expr( p.parser, *args )
+
+    def p_expr_2( self, p ):
+        """expr         : openparan expr closeparan"""
+        expr = ExprParan( p.parser, p[1], p[2], p[3] )
+        p[0] = Expr( p.parser, None, expr, None, None, None )
+
+    def p_expr_3( self, p ):
+        """expr         : expr QMARK exprcolon"""
+        cls, value = p[2]
+        term = cls(p.parser, value)
+        expr = ExprTernary( p.parser, p[1], term, p[3] )
+        p[0] = Expr( p.parser, None, expr, None, None, None )
+
+    def p_expr_4( self, p ):
+        """expr         : expr PLUS expr
+                        | expr MINUS expr
+                        | expr STAR expr
+                        | expr FWDSLASH expr
+                        | expr AND expr
+                        | expr OR expr"""
+        cls, value = p[2]
+        term = cls(p.parser, value)
+        p[0] = Expr( p.parser, None, None, p[1], term, p[3] )
+
+    def p_expr_5( self, p ):
+        """expr         : expr EQUAL expr
+                        | expr GT expr
+                        | expr LT expr"""
+        cls, value = p[2]
+        term = cls(p.parser, value)
+        p[0] = Expr( p.parser, None, None, p[1], term, p[3] )
+
+    def p_expr_6( self, p ):
+        """expr         : MINUS expr %prec UNARY
+                        | PLUS expr %prec UNARY"""
+        cls, value = p[1]
+        term = cls(p.parser, value)
+        p[0] = Expr( p.parser, None, None, None, term, p[2] )
+
+    def p_exprcolon( self, p ):
+        """exprcolon    : expr COLON expr"""
+        cls, value = p[2]
+        term = cls(p.parser, value)
+        p[0] = Expr( p.parser, None, None, p[1], term, p[3] )
 
     def p_term( self, p ):
-        """term         : term_val
-                        | string
+        """term         : number
+                        | dimension
+                        | func_call
                         | ident
+                        | string
                         | uri
                         | unicoderange
                         | hash"""
-        if isinstance( getattr(p[1], 'TERMINAL', None), HASH ) :
-            assert p[1].TERMINAL.checkhex(), 'Must be a hexadecimal number'
-        p[0] = Term( p.parser, p[1])
+        p[0] = Term( p.parser, p[1] )
 
-    def p_term_val( self, p ):
-        """term_val     : number
-                        | dimension
-                        | func_call"""
-        p[0] = TermVal( p.parser, p[1] )
-                         
-    def p_func( self, p ):
-        """func_call    : function exprs closeparan
-                        | function closeparan"""
-        args = [ p[1], p[2], p[3] ] if len(p) == 4 else [ p[1], None, p[2] ]
-        p[0] = FuncCall( p.parser, *args )
+    def p_func_call_1( self, p ):
+        """func_call    : FUNCTION exprs closeparan"""
+        x = [ (FUNCTION, 1), p[2], None, p[3] ]
+        p[0] = FuncCall( p.parser, *self._buildterms(p, x) )
 
-    def p_compoperator( self, p ):
-        """compoperator : plus %prec ARITH
-                        | minus %prec ARITH
-                        | star %prec FACTOR
-                        | fwdslash %prec FACTOR"""
-        p[0] = CompOperator( p.parser, p[1] )
+    def p_func_call_2( self, p ):
+        """func_call    : FUNCTION simpselector closeparan"""
+        x = [ (FUNCTION, 1), None, p[2], p[3] ]
+        p[0] = FuncCall( p.parser, *self._buildterms(p, x) )
 
-    # Note : `operator` should never be a `SEMICOLON`,
-    #        as per CSS3 grammar only, fwdslash and comma are real operators
-    def p_operator( self, p ):
-        """operator     : dlimit
-                        | comma
-                        | colon
-                        | dot
-                        | equal
-                        | gt
-                        | lt"""
-        p[0] = Operator( p.parser, p[1] )
+    def p_func_call_3( self, p ):
+        """func_call    : FUNCTION closeparan"""
+        x = [ (FUNCTION, 1), None, None, p[2] ]
+        p[0] = FuncCall( p.parser, *self._buildterms(p, x) )
 
     #---- Terminals with whitespace
 
-    def p_charset_sym( self, p ):
-        """charset_sym  : CHARSET_SYM wc
-                        | CHARSET_SYM"""
-        t = CHARSET_SYM( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
+    def p_sel_ident( self, p ):
+        """sel_ident    : SEL_IDENT wc
+                        | SEL_IDENT"""
+        x = [ (IDENT, 1), p[2] ] if len(p) == 3 else [ (IDENT, 1), None ]
+        p[0] = Ident( p.parser, *self._buildterms(p, x) )
 
-    def p_import_sym( self, p ):
-        """import_sym   : IMPORT_SYM wc
-                        | IMPORT_SYM"""
-        t = IMPORT_SYM( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
+    def p_sel_string( self, p ):
+        """sel_string   : SEL_STRING wc
+                        | SEL_STRING"""
+        x = [ (STRING, 1), p[2] ] if len(p) == 3 else [ (STRING, 1), None ]
+        p[0] = String( p.parser, *self._buildterms(p, x) )
 
-    def p_namespace_sym( self, p ):
-        """namespace_sym : NAMESPACE_SYM wc
-                         | NAMESPACE_SYM"""
-        t = NAMESPACE_SYM( p.parser, p[1] )
+    def p_sel_hash( self, p ):
+        """sel_hash     : SEL_HASH wc
+                        | SEL_HASH"""
+        (cls, value) = p[1]
         wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_media_sym( self, p ):
-        """media_sym    : MEDIA_SYM wc
-                        | MEDIA_SYM"""
-        t = MEDIA_SYM( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_page_sym( self, p ):
-        """page_sym     : PAGE_SYM wc
-                        | PAGE_SYM"""
-        t = PAGE_SYM( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_font_face_sym( self, p ):
-        """font_face_sym : FONT_FACE_SYM wc
-                         | FONT_FACE_SYM"""
-        t = FONT_FACE_SYM( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_important_sym( self, p ):
-        """important_sym : IMPORTANT_SYM wc
-                         | IMPORTANT_SYM"""
-        t = IMPORTANT_SYM( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_atkeyword( self, p ):
-        """atkeyword    : ATKEYWORD wc
-                        | ATKEYWORD"""
-        t = ATKEYWORD( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_string( self, p ):
-        """string       : STRING wc
-                        | STRING"""
-        t = STRING( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_uri( self, p ):
-        """uri          : URI wc
-                        | URI"""
-        t = URI( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_function( self, p ):
-        """function     : FUNCTION wc
-                        | FUNCTION"""
-        t = FUNCTION( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_unicoderange( self, p ):
-        """unicoderange : UNICODERANGE wc
-                        | UNICODERANGE"""
-        t = UNICODERANGE( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
+        p[0] = Hash( p.parser, cls(p.parser, value), wc )
 
     def p_ident( self, p ):
         """ident        : IDENT wc
                         | IDENT"""
-        t = IDENT( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
+        x = [ (IDENT, 1), p[2] ] if len(p) == 3 else [ (IDENT, 1), None ]
+        p[0] = Ident( p.parser, *self._buildterms(p, x) )
+
+    def p_string( self, p ):
+        """string       : STRING wc
+                        | STRING"""
+        x = [ (STRING, 1), p[2] ] if len(p) == 3 else [ (STRING, 1), None ]
+        p[0] = String( p.parser, *self._buildterms(p, x) )
+
+    def p_uri( self, p ):
+        """uri          : URI wc
+                        | URI"""
+        x = [ (URI, 1), p[2] ] if len(p) == 3 else [ (URI, 1), None ]
+        p[0] = Uri( p.parser, *self._buildterms(p, x) )
+
+    def p_unicoderange( self, p ):
+        """unicoderange : UNICODERANGE wc
+                        | UNICODERANGE"""
+        x = [ (UNICODERANGE, 1), p[2] 
+            ] if len(p) == 3 else [ (UNICODERANGE, 1), None ]
+        p[0] = UnicodeRange( p.parser, *self._buildterms(p, x) )
 
     def p_number( self, p ):
         """number       : NUMBER wc
@@ -705,7 +664,7 @@ class TSSParser( object ):
         (cls, value) = p[1]
         term = cls( p.parser, value )
         wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, term, wc )
+        p[0] = Number( p.parser, term, wc )
 
     def p_dimension( self, p ):
         """dimension    : DIMENSION wc
@@ -713,7 +672,7 @@ class TSSParser( object ):
         (cls, value) = p[1]
         term = cls( p.parser, value )
         wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, term, wc )
+        p[0] = Dimension( p.parser, term, wc )
 
     def p_hash( self, p ):
         """hash         : HASH wc
@@ -721,189 +680,49 @@ class TSSParser( object ):
         (cls, value) = p[1]
         term = cls( p.parser, value )
         wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, term, wc )
-
-    def p_fwdslash( self, p ):
-        """fwdslash     : FWDSLASH wc
-                        | FWDSLASH"""
-        t = FWDSLASH( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_comma( self, p ):
-        """comma        : COMMA wc
-                        | COMMA"""
-        t = COMMA( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_equal( self, p ):
-        """equal        : EQUAL wc
-                        | EQUAL"""
-        t = EQUAL( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_includes( self, p ):
-        """includes     : INCLUDES wc
-                        | INCLUDES"""
-        t = INCLUDES( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_dashmatch( self, p ):
-        """dashmatch    : DASHMATCH wc
-                        | DASHMATCH"""
-        t = DASHMATCH( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_prefixmatch( self, p ):
-        """prefixmatch  : PREFIXMATCH wc
-                        | PREFIXMATCH"""
-        t = PREFIXMATCH( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_suffixmatch( self, p ):
-        """suffixmatch  : SUFFIXMATCH wc
-                        | SUFFIXMATCH"""
-        t = SUFFIXMATCH( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_substringmatch( self, p ):
-        """substringmatch   : SUBSTRINGMATCH wc
-                            | SUBSTRINGMATCH"""
-        t = SUBSTRINGMATCH( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_plus( self, p ):
-        """plus         : PLUS wc
-                        | PLUS"""
-        t = PLUS( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_minus( self, p ):
-        """minus        : MINUS wc
-                        | MINUS"""
-        t = MINUS( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_gt( self, p ):
-        """gt           : GT wc
-                        | GT"""
-        t = GT( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_lt( self, p ):
-        """lt           : LT wc
-                        | LT"""
-        t = LT( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_tilda( self, p ):
-        """tilda        : TILDA wc
-                        | TILDA"""
-        t = TILDA( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_colon( self, p ):
-        """colon        : COLON wc
-                        | COLON"""
-        t = COLON( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_semicolon( self, p ):
-        """semicolon    : SEMICOLON wc
-                        | SEMICOLON"""
-        t = SEMICOLON( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_star( self, p ):
-        """star         : STAR wc
-                        | STAR"""
-        t = STAR( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_dot( self, p ):
-        """dot          : DOT wc
-                        | DOT"""
-        t = DOT( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_dlimit( self, p ):
-        """dlimit       : DLIMIT wc
-                        | DLIMIT"""
-        t = DLIMIT( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
+        p[0] = Hash( p.parser, term, wc )
 
     def p_openbrace( self, p ):
         """openbrace    : OPENBRACE wc
                         | OPENBRACE"""
         t = OPENBRACE( p.parser, p[1] )
         wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
+        p[0] = Openbrace( p.parser, t, wc )
 
     def p_closebrace( self, p ):
         """closebrace   : CLOSEBRACE wc
                         | CLOSEBRACE"""
         t = CLOSEBRACE( p.parser, p[1] )
         wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
+        p[0] = Closebrace( p.parser, t, wc )
 
     def p_opensqr( self, p ):
         """opensqr      : OPENSQR wc
                         | OPENSQR"""
         t = OPENSQR( p.parser, p[1] )
         wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
+        p[0] = Opensqr( p.parser, t, wc )
 
     def p_closesqr( self, p ):
         """closesqr     : CLOSESQR wc
                         | CLOSESQR"""
-        t = OPENSQR( p.parser, p[1] )
+        t = CLOSESQR( p.parser, p[1] )
         wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
+        p[0] = Closesqr( p.parser, t, wc )
 
     def p_openparan( self, p ):
         """openparan    : OPENPARAN wc
                         | OPENPARAN"""
         t = OPENPARAN( p.parser, p[1] )
         wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
+        p[0] = Openparan( p.parser, t, wc )
 
     def p_closeparan( self, p ):
         """closeparan   : CLOSEPARAN wc
                         | CLOSEPARAN"""
         t = CLOSEPARAN( p.parser, p[1] )
         wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_cdo( self, p ):
-        """cdo          : CDO wc
-                        | CDO"""
-        t = CDO( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_cdc( self, p ):
-        """cdc          : CDC wc
-                        | CDC"""
-        t = CDC( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
+        p[0] = Closeparan( p.parser, t, wc )
 
     def p_wc_1( self, p ):
         """wc           : S
@@ -919,99 +738,7 @@ class TSSParser( object ):
                ] if len(p) == 3 else  [ None, None, COMMENT(p.parser, p[1]) ]
         p[0] = WC( p.parser, *args )
 
-    #---- Extension language specific grammars
-
-    def p_functionstart( self, p ):
-        """functionstart    : FUNCTIONSTART wc
-                            | FUNCTIONSTART"""
-        t = FUNCTIONSTART( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_functionbody( self, p ):
-        """functionbody : FUNCTIONBODY wc
-                        | FUNCTIONBODY"""
-        t = FUNCTIONBODY( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, t, wc )
-
-    def p_extn_expr( self, p ):
-        """extn_expr    : EXTN_EXPR wc
-                        | EXTN_EXPR"""
-        wc = p[2] if len(p) == 3 else None
-        p[0] = ExtnExpr( p.parser, EXTN_EXPR(p.parser, p[1]), wc )
-
-    def p_extn_statement( self, p ):
-        """extn_statement   : EXTN_STATEMENT wc
-                            | EXTN_STATEMENT"""
-        wc = p[2] if len(p) == 3 else None
-        p[0] = ExtnStatement( p.parser, EXTN_STATEMENT(p.parser, p[1]), wc )
-
-    def p_ifcontrol( self, p ):
-        """ifcontrol    : IFCONTROL wc
-                        | IFCONTROL"""
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, IFCONTROL(p.parser, p[1]), wc )
-
-    def p_elifcontrol( self, p ):
-        """elifcontrol  : ELIFCONTROL wc
-                        | ELIFCONTROL"""
-        wc = p[2] if len(p) == 3 else None
-        p[0] = TerminalS( p.parser, ELIFCONTROL(p.parser, p[1]), wc )
-
-    def p_elsecontrol( self, p ):
-        """elsecontrol  : ELSECONTROL wc
-                        | ELSECONTROL"""
-        p[0] = TerminalS( p.parser, ELSECONTROL(p.parser, p[1]), wc )
-
-    def p_forcontrol( self, p ):
-        """forcontrol   : FORCONTROL wc
-                        | FORCONTROL"""
-        p[0] = TerminalS( p.parser, FORCONTROL(p.parser, p[1]), wc )
-
-    def p_whilecontrol( self, p ):
-        """whilecontrol : WHILECONTROL wc
-                        | WHILECONTROL"""
-        p[0] = TerminalS( p.parser, WHILECONTROL(p.parser, p[1]), wc )
-
-    def p_functiondef( self, p ):
-        """functiondef  : functionstart functionbody"""
-        p[0] = FunctionDef( p.parser, p[1], p[2] )
-
-    def p_ifelfiblock_1( self, p ):
-        """ifelfiblock  : ifblock"""
-        p[0] = IfelfiBlock( p.parser, p[1], None, None )
-
-    def p_ifelfiblock_2( self, p ):
-        """ifelfiblock  : ifelfiblock elifblock
-                        | ifelfiblock elseblock"""
-        p[0] = IfelfiBlock( p.parser, None, p[1], p[2] )
-
-    def p_ifblock( self, p ):
-        """ifblock      : ifcontrol declarations closebrace"""
-        p[0] = IfBlock( p.parser, p[1], p[2], p[3] )
-
-    def p_elifblock( self, p ):
-        """elifblock    : elifcontrol declarations closebrace"""
-        p[0] = ElifBlock( p.parser, p[1], p[2], p[3] )
-
-    def p_elseblock( self, p ):
-        """elseblock    : elsecontrol declarations closebrace"""
-        p[0] = ElseBlock( p.parser, p[1], p[2], p[3] )
-
-    def p_forblock( self, p ):
-        """forblock     : forcontrol declarations closebrace"""
-        p[0] = ForBlock( p.parser, p[1], p[2], p[3] )
-
-    def p_whileblock( self, p ):
-        """whileblock   : whilecontrol declarations closebrace"""
-        p[0] = WhileBlock( p.parser, p[1], p[2], p[3] )
-
     #---- For confirmance with forward compatible CSS
-
-    def p_any( self, p):
-        """any          : opensqr exprs closesqr"""
-        p[0] = Any( p.parser, p[1], p[2], p[3] )
 
     def p_error( self, p ):
         if p:
@@ -1043,7 +770,7 @@ if __name__ == "__main__":
     import pprint, time
 
     if len(sys.argv) > 1 :
-        text = codecs.open( sys.argv[1], encoding='utf-8' ).read()
+        text = codecs.open( sys.argv[1], encoding='utf-8-sig' ).read()
     else :
         text = "hello"
     parser = TSSParser( yacc_debug=True )

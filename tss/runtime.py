@@ -14,6 +14,13 @@ from  tss.functions     import *
 __all__ = [ 'StackMachine', 'Namespace' ]
 __all__.extend([ fn for fn in globals().keys() if fn.startswith('tss_') ])
 
+operations = {
+    '+' : lambda a, b : a + b,
+    '-' : lambda a, b : a - b,
+    '*' : lambda a, b : a * b,
+    '/' : lambda a, b : a / b,
+}
+
 class StackMachine( object ) :
     def __init__( self, ifile, compiler, tssconfig={} ):
         self.compiler, self.tssconfig  = compiler, tssconfig
@@ -51,6 +58,9 @@ class StackMachine( object ) :
         else :
             raise Exception( 'Unable to extend context stack' )
 
+    def pop( self, idx=-1 ):
+        return self.bufstack[-1].pop(idx)
+
     def pushbuf( self, buf=None ) :
         buf = []
         self.bufstack.append( buf )
@@ -72,6 +82,19 @@ class StackMachine( object ) :
             fn = self.escfilters.get( filt, None )
             text = fn.do( self, text, params ) if fn else text
         return text
+
+    def evalunary( self ):
+        opr, o2 = self.pop(), self.pop()
+        self.append( o2.__class__( opr + str(o2) ))
+
+    def evalbinary( self ):
+        o1, opr, o2 = self.pop(), self.pop(), self.pop()
+        try    :
+            print o1, o2
+            self.append( operations[opr]( o1, o2 ))
+        except : 
+            raise
+            self.append( operations[opr]( o2, o1 ))
 
 
 class Namespace( object ):

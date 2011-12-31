@@ -1,0 +1,7 @@
+#adbl_page_content a.adbl-link:active,#adbl_wish_list_popup a.adbl-link:active,#adbl_wish_list_popup a.adbl-link:active,{color:#B94E21;}
+/* Dangling declaration `0` */
+.ys .slots td p{margin:5px 0 3px;0;}
+/* `+` prefix for selector */
++*html #hd-bar{
+	background-color:#ccc;
+}

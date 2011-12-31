@@ -1,8 +1,8 @@
 a {
   color1 : 10, 20;
-  color2 : 10* 20;
-  color3 : 10 *expression(20,30);
-  color4 : 1px solid gray;
+  color2 : 10.1*20px 10.1-20em, 10.1+20ex;
+  color3 : 10*expression(20,30);
+  color4 : 1px solid*2 gray;
   color5 : 10+20 *30 -40/50;
   color6 : (10+20) * (30-40)/50;
   color7 : -20;
@@ -10,4 +10,6 @@ a {
   color9 : -20*30;
   color10 : 20 -+10;
   color11 : 1px solid gray, 10px * 40em;
+  margin-top: expression(0 - parseInt(offsetHeight / 2) + (documentElement && scrollTop || scrollTop) + 'px');
+  filter: DXImageTransform.Microsoft.gradient(startColorstr='#003366', endColorstr='#024587');
 }

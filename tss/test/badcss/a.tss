@@ -1,0 +1,21 @@
+@media screen and (-webkit-min-device-pixel-ratio:0)
+{
+  .searchbtnADV{ FONT-SIZE: 1.0em;  FONT-FAMILY: verdana; PADDING-RIGHT: 6px; PADDING-LEFT: 6px; PADDING-TOP: 1px; PADDING-BOTTOM: 1px; width:110px;position:relative;top:1px;}
+}
+
+/* Is colon allowed in mediums ? *?
+@media screen and /* *//**/(-webkit-min-device-pixel-ratio:0){button.btn span,button.smallBtn span{margin-top:-1px;}}
+
+@media print {
+*{background:transparent!important;color:#444!important;text-shadow:none!important}
+a,a:visited{color:#444!important;text-decoration:underline}
+a:after{content:" (" attr(href) ")"}
+abbr:after{content:" (" attr(title) ")"}
+.ir a:after{content:""}
+pre,blockquote{border:1px solid #999;page-break-inside:avoid}
+thead{display:table-header-group}
+tr,img{page-break-inside:avoid}
+@page{margin:.5cm}
+p,h2,h3{orphans:3;widows:3}
+h2,h3{page-break-after:avoid}
+}

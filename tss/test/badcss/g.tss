@@ -1,0 +1,16 @@
+div.mainContent div.formRow:after {
+    content: .;
+}
+
+/* CSS filters */
+.wrap
+{
+	left:-0.5px;
+	*+left:-1px;
+}
+
+/* Child selector hack */
+html>/**/body .highslide-gallery ul li {
+	display: table;
+	text-align: center;
+}

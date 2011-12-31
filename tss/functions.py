@@ -5,4 +5,7 @@
 # -*- coding: utf-8 -*-
 
 def tss_color( red, blue, green ):
-    return 0
+    return '#%x%x%x' % (red, blue, green)
+
+def tss_add( a, b ):
+    return str(a+b)

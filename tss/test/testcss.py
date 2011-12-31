@@ -1,8 +1,8 @@
 #! /usr/bin/env python
 
-import os, sys, codecs
+import os, sys, codecs, shutil
 from   optparse         import OptionParser
-from   os.path          import abspath, join
+from   os.path          import abspath, join, isdir, basename
 from   tss.parser       import TSSParser
 
 THISDIR = abspath( '.' )
@@ -11,11 +11,11 @@ def test_execute( f, options ) :
     print "Testing %r ...\n" % f,
     txt = open(f).read(4)
     if chr(0xef) == txt[0] and chr(0xbb) == txt[1] and chr(0xbf) == txt[2] :
-        fd = codecs.open(f, encoding='utf-8')
+        fd = codecs.open(f, encoding='utf-8-sig')
         fd.seek(3)
         csstext = fd.read()
     else :
-        csstext = codecs.open(f, encoding='utf-8').read()
+        csstext = codecs.open(f, encoding='utf-8-sig').read()
 
     tssparser = TSSParser( debug=int(options.debug) )
     tu = tssparser.parse( csstext, debuglevel=int(options.debug) )
@@ -33,8 +33,8 @@ def test_execute( f, options ) :
             txtlen = len(csstext) if len(csstext) < len(dumptext) else len(dumptext)
             diff = [ i for i in range(txtlen) if csstext[i] != dumptext[i] ]
             off = diff and diff[0] or len(csstext)
-            codecs.open('a', mode='w', encoding='utf8').write(csstext)
-            codecs.open('b', mode='w', encoding='utf8').write(dumptext)
+            codecs.open('a', mode='w', encoding='utf-8').write(csstext)
+            codecs.open('b', mode='w', encoding='utf-8').write(dumptext)
             print "(fail at %s)" % off
             rc = 'failure'
         else :
@@ -47,7 +47,12 @@ def test_samplecss( cssdir, options ) :
     failures = success = total = knownerrors = 0
     for f in os.listdir( cssdir ) :
         f = join( cssdir, f )
+        if isdir(f) : continue
         rc = test_execute(f, options)
+        #---
+        #if isdir( join(cssdir,'t') ) :
+        #    shutil.move( f, join(cssdir, 't', basename(f)) )
+        #---
         if rc == 'success' : success += 1
         elif rc == 'failure' : failures += 1
         elif rc == 'knownerror' : knownerrors += 1
