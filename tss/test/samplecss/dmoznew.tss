@@ -179,7 +179,7 @@ body {
 	float:left;
 	width:100%;font-family:arial;
 }
-@media screen and (-webkit-min-device-pixel-ratio0)
+@media screen and (-webkit-min-device-pixel-ratio:0)
 {
  #hdADV-bar{
         background-color:#ccc;
