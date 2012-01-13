@@ -51,14 +51,8 @@ def main() :
         print tss.__version__
 
     elif args and isfile(args[0]) :
-        tss.tss_cmdline(
-            args[0],
-            args=options.args,
-            context=options.context,
-            debuglevel=int(options.debug),
-            show=options.show,
-            dump=options.dump,
-        )
+        ttlloc = args.pop(0)
+        tss.tss_cmdline( ttlloc, _options=options )
     elif int(options.debug) :
         TSSParser( tssconfig={}, debug=int(options.debug) )
 

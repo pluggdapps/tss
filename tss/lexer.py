@@ -23,9 +23,10 @@ from   tss.ast      import EMS, EXS, LENGTHPX, LENGTHCM, LENGTHMM, LENGTHIN, \
                            LENGTHPT, LENGTHPC, ANGLEDEG, ANGLERAD, ANGLEGRAD, \
                            TIMEMS, TIMES, FREQHZ, FREQKHZ, PERCENTAGE, NUMBER, \
                            HASH, PLUS, MINUS, STAR, FWDSLASH, PERCENT, EQUAL, \
-                           GT, LT, TILDA, COMMA, COLON, DOT, DLIMIT, AND, OR, \
-                           PREFIXSTAR, QMARK, INCLUDES, DASHMATCH, \
-                           PREFIXMATCH, SUFFIXMATCH, SUBSTRINGMATCH
+                           GT, LT, TILDA, COMMA, COLON, DOT, AMPERSAND, AND, \
+                           OR, PREFIXSTAR, QMARK, INCLUDES, DASHMATCH, \
+                           PREFIXMATCH, SUFFIXMATCH, SUBSTRINGMATCH, \
+                           EXTN_EXPR, EXTN_STATEMENT, EXTN_VAR
 
 log = logging.getLogger( __name__ )
 
@@ -69,15 +70,17 @@ class TSSLexer( object ) :
         return None
 
     def _lexanalysis( self, t ):
-        if self.directive_scan and self.directive_scan[-1] == t.type :
+        if self.directive_scan and self.directive_scan[-1][1] == t.type :
             self.directive_scan.pop(-1)
-        if t.type in ['MEDIA_SYM', 'ATKEYWORD', 'PAGE_SYM'] :
-            self.directive_scan.append( 'OPENBRACE' )
+        elif t.type in ['MEDIA_SYM', 'ATKEYWORD', 'PAGE_SYM'] :
+            self.directive_scan.append( (t.type, 'OPENBRACE') )
         elif t.type in self.directives :
-            self.directive_scan.append( 'SEMICOLON' )
+            self.directive_scan.append( (t.type, 'SEMICOLON') )
 
     def _inselector( self, t ):
-        if self.directive_scan == [] and self._lookahead(t, '{;}') == '{' :
+        if self.directive_scan and directive_scan[-1][0] == 'EXTEND_SYM' :
+            return True
+        elif self.directive_scan == [] and self._lookahead(t, '{;}') == '{' :
             return True
         else :
             return False
@@ -138,7 +141,7 @@ class TSSLexer( object ) :
 
     ## Tokens recognized by the TSSLexer
     directives = ( 'CHARSET_SYM', 'IMPORT_SYM', 'NAMESPACE_SYM', 'PAGE_SYM',
-                   'MEDIA_SYM', 'FONT_FACE_SYM', 'ATKEYWORD' )
+                   'EXTEND_SYM', 'MEDIA_SYM', 'FONT_FACE_SYM', 'ATKEYWORD' )
     tokens = (
         # Sufffix
         'IMPORTANT_SYM',
@@ -158,20 +161,21 @@ class TSSLexer( object ) :
         'SUBSTRINGMATCH',
 
         # Literals
-        'STRING', 'NUMBER', 'DIMENSION', 'UNICODERANGE', 'HASH', 'QMARK', #'DLIMIT', 
+        'PAGE_MARGIN_SYM', 'STRING', 'NUMBER', 'DIMENSION', 'UNICODERANGE',
+        'HASH', 'QMARK', 'AMPERSAND', 
 
         # Multi character token 
         'AND', 'OR',
 
         # Single character token 
-        'COMMA', 'EQUAL', 'COLON', 'SEMICOLON', 
-        'PREFIXSTAR', 
+        'COMMA', 'EQUAL', 'COLON', 'SEMICOLON',
+        'PREFIXSTAR',
         'PLUS', 'MINUS', 'STAR', 'FWDSLASH', 'GT', 'LT',
         'OPENBRACE', 'CLOSEBRACE', 'OPENSQR', 'CLOSESQR',
         'OPENPARAN', 'CLOSEPARAN',
 
         # Extension tokens
-        #'EXTN_EXPR', 'EXTN_STATEMENT',
+        'EXTN_EXPR', 'EXTN_STATEMENT', 'EXTN_VAR', 'SEL_EXTN_VAR',
         #'PERCENT', 'FUNCTIONSTART', 'FUNCTIONBODY',
         #'IFCONTROL','ELIFCONTROL',  'ELSECONTROL',
         #'FORCONTROL', 'WHILECONTROL',
@@ -206,50 +210,67 @@ class TSSLexer( object ) :
     range_   = r'\?{1,6}|[0-9a-f](\?{0,5}|[0-9a-f](\?{0,4}|' + \
                   r'[0-9a-f](\?{0,3}|[0-9a-f](\?{0,2}|[0-9a-f](\??|[0-9a-f])))))'
 
+    pagemr   = r'@(page|top-left-corner|top-left|top-center|top-right' + \
+                 '|top-right-corner|bottom-left-corner|bottom-left' + \
+                 '|bottom-center|bottom-right|bottom-right-corner|left-top' + \
+                 '|left-middle|right-bottom|right-top|right-middle' + \
+                 '|right-bottom)' + wspac
+
     @TOKEN( wspace )
-    def t_S( self, t ) :
+    def t_S( self, t ):
         self._incrlineno( t )
         return t
 
-    def t_COMMENT( self, t ) :
+    def t_COMMENT( self, t ):
         r'\/\*[^*]*\*+([^/][^*]*\*+)*\/'
         self._incrlineno( t )
         return t
 
     @TOKEN( r'@charset' + wspac )
-    def t_CHARSET_SYM( self, t ) :
+    def t_CHARSET_SYM( self, t ):
         self._incrlineno( t )
         self._lexanalysis(t)
         return t
 
     @TOKEN( r'@import' + wspac )
-    def t_IMPORT_SYM( self, t ) :
+    def t_IMPORT_SYM( self, t ):
         self._incrlineno( t )
         self._lexanalysis(t)
         return t
 
     @TOKEN( r'@namespace' + wspac )
-    def t_NAMESPACE_SYM( self, t ) :
+    def t_NAMESPACE_SYM( self, t ):
         self._incrlineno( t )
         self._lexanalysis(t)
         return t
 
     @TOKEN( r'@media' + wspac )
-    def t_MEDIA_SYM( self, t ) :
-        self._incrlineno( t )
-        self._lexanalysis(t)
-        return t
-
-    @TOKEN( r'@page' + wspac )
-    def t_PAGE_SYM( self, t ) :
+    def t_MEDIA_SYM( self, t ):
         self._incrlineno( t )
         self._lexanalysis(t)
         return t
 
     @TOKEN( r'@font-face' + wspac )
-    def t_FONT_FACE_SYM( self, t ) :
+    def t_FONT_FACE_SYM( self, t ):
         self._incrlineno( t )
         self._lexanalysis(t)
+        return t
+
+    @TOKEN( r'@page' + wspac )
+    def t_PAGE_SYM( self, t ):
+        self._incrlineno( t )
+        self._lexanalysis(t)
+        return t
+
+    @TOKEN( r'@extend' + wspac )
+    def t_EXTEND_SYM( self, t ):
+        self._incrlineno( t )
+        self._lexanalysis(t)
+        return t
+
+    @TOKEN( pagemr )
+    def t_PAGE_MARGIN_SYM( self, t ):
+        self._incrlineno( t )
         return t
 
     # Gotcha : Browser specific @-rules
@@ -444,12 +465,28 @@ class TSSLexer( object ) :
         t.value = t.value
         return t
 
-    def t_EXTN_STATEMENT( self, t ) :
-        r'^[ ]*\$.*$'
+    @TOKEN( r'\$\{[^}]*\}' + wspac )
+    def t_EXTN_EXPR( self, t ) :
+        obraces = t.value.count('{') > 1
+        lexdata = self.lexer.lexdata
+        txtlen = len(lexdata)
+        if obraces > 1 :
+            while (t.lexpos < txtlen) and obraces :
+                if lexdata[t.lexpos] == '{' : obraces += 1
+                elif lexdata[t.lexpos] == '}' : obraces -= 1
+                t.value += lexdata[t.lexpos]
+                t.lexpos += 1
+        self._incrlineno( t )
         return t
 
-    def t_EXTN_EXPR( self, t ) :
-        r'\$\{([^}])*\}'
+    @TOKEN( r'\$[^\r\n]+;' + wspac )
+    def t_EXTN_STATEMENT( self, t ) :
+        self._incrlineno( t )
+        return t
+
+    @TOKEN( r'\$[a-zA-Z][a-zA-Z0-9_]+' + wspac )
+    def t_EXTN_VAR( self, t ) :
+        if self._inselector(t) : t.type = 'SEL_EXTN_VAR'
         return t
 
     @TOKEN( r'\+' + wspac )
@@ -592,10 +629,10 @@ class TSSLexer( object ) :
 
     #---- Unused TOKENS
 
-    @TOKEN( r'[&\?\|!]' + wspac )
-    def t_DLIMIT( self, t ):
+    @TOKEN( r'&' + wspac )
+    def t_AMPERSAND( self, t ):
         self._incrlineno( t )
-        t.value = (DLIMIT, t.value)
+        t.value = (AMPERSAND, t.value)
         return t
 
     def t_FUNCTIONSTART( self, t ) :

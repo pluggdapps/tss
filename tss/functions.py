@@ -4,8 +4,10 @@
 
 # -*- coding: utf-8 -*-
 
+from tss.runtime import *
+
 def tss_color( red, blue, green ):
-    return '#%x%x%x' % (red, blue, green)
+    return STRING_( '#%x%x%x' % (red, blue, green) )
 
 def tss_add( a, b ):
-    return str(a+b)
+    return NUMBER_( str(a+b) )

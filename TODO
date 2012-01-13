@@ -2,6 +2,9 @@
     BOM (EF, BB, BF) syntax is not allowed in utf-8 encoding, so where ever
         codecs.open(...).read() is used stip them off.
 
+* This whole utf-8-sig business is very patchy. Review the code aand fix
+  it properly
+
 * charset directive should be read and based on the character-set encoding
   the whole text must be re-read. This character set encoding specified in TTL
   text must override the encoding config-param passed by the caller program.
@@ -29,3 +32,23 @@
         height:25px;
         background:transparent url('../images/alert_a_{z.png') no-repeat scroll 0 -702px;
     }
+
+* Nested rules are to be terminated with SEMICOLON. Either get rid of this
+  limitation (feature) or provide an appropriate error message.
+
+* What kind of comments to leave and what kind of comments to prune off
+
+* Expression substitution within a string of text
+    p:before {
+      content: "I ate #{5 + 10} pies!";
+    }
+
+* To provide browser compliance, `operator` non-terminal can also have,
+       colon, equal, dot, gt, ask
+  like,
+       filter : progid:DXImageTransform.Microsoft.gradient(
+                   startColorstr='#c2080b',endColorstr='#8c0408',
+                   GradientType=0 )
+
+* Add 'sq', 'dq' filter to expression substitution to quote the output 
+  with single-quote or double-quote

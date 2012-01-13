@@ -16,7 +16,7 @@
 * Normalization function for configuration values.
 """
 
-import codecs
+import re, codecs
 from   os.path       import basename, join, dirname
 from   datetime      import datetime as dt
 
@@ -26,6 +26,7 @@ from   tss.parser    import TSSParser
 __version__ = '0.1dev'
 
 DEFAULT_ENCODING = 'utf-8-sig'
+ESCFILTER_RE = re.compile( r'([a-zA-Z0-9_-]+)(\.[a-zA-Z0-9_.-]+)*,' )
 DEVMOD = False
 
 defaultconfig = ConfigDict()
@@ -173,18 +174,18 @@ def tss_cmdline( tssloc, **kwargs ):
     from tss.compiler import Compiler
 
     tssconfig = dict( defaultconfig.items() )
+    options = kwargs.pop('_options', None )
     # directories, module_directory, devmod
     tssconfig.update( kwargs )
 
     # Parse command line arguments and configuration
     tssconfig.setdefault('devmod', DEVMOD)
-    args = eval( tssconfig.pop( 'args', '[]' ))
-    context = tssconfig.pop( 'context', {} )
+    args = eval( options.args ) if options and options.args else []
+    context = options and options.context or {}
     context = eval(context) if isinstance(context, basestring) else context
     context.update( _mainargs=args ) if args else None
-    debuglevel = tssconfig.pop( 'debuglevel', 0 )
-    show = tssconfig.pop( 'show', False )
-    dump = tssconfig.pop( 'dump', False )
+    debuglevel = int(options.debug) if options and options.debug else 0
+    show, dump = (options.show, options.dump) if options else (None, None)
 
     # Setup parser
     tssparser = TSSParser( tssconfig=tssconfig, debug=debuglevel )
@@ -199,6 +200,7 @@ def tss_cmdline( tssloc, **kwargs ):
     elif show :
         print "AST tree ..."
         tu = comp.toast()
+        tu.asttransorms( comp.igen, tu.table )
         tu.show()
     elif dump :
         tu = comp.toast()
@@ -208,7 +210,7 @@ def tss_cmdline( tssloc, **kwargs ):
         else : print "Success ..."
     else :
         print "Generating py / CSS file ... "
-        pytext = comp.topy( tsshash=comp.tsslookup.tsshash ) # pytext in unicode
+        pytext = comp.topy() # pytext in unicode
         # Intermediate file should always be encoded in 'utf-8'
         enc = comp.encoding.rstrip('-sig') # -sig is used to interpret BOM
         codecs.open( pyfile, mode='w', encoding=enc ).write(pytext)

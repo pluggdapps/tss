@@ -4,6 +4,9 @@
 
 # -*- coding: utf-8 -*-
 
+import re
+from   os.path   import join
+
 class ConfigItem( dict ):
     """Convenience class encapsulating config value description, which is a
     dictionary of following keys,
@@ -107,18 +110,35 @@ def hitch( function, *args, **kwargs ) :
     return fnhitched
 
 
+re_charset = re.compile(
+    '@charset[ \t\r\n\f]+(("[^"]*")|(\'[^\']*\'))[ \t\r\n\f]*;' )
 def charset( tssfile=None, parseline=None, encoding=None ):
     """Charset directive must come in the beginning of the Tayra template
     text. Parse the text for the directive and return the encoding string.
     """
-    if tssfile :
-        for line in open(tssfile).readlines() :
-            line = line.strip()
-            if line.startswith('@charset') :
-                parseline = line
-    if parseline :
-        encoding = parseline[8:].strip('\'\" \t\r\n;')
+    lines = open(tssfile).readlines() if tssfile else [parseline]
+    for line in lines :
+        line = line.strip()
+        m = re_charset.match( line )
+        if m and m.groups() :
+            encoding = m.groups()[0].strip('\'\" \t\r\n;')
     return encoding
 
 def throw( lineno, lexpos, msg ) :
     raise Exception( msg + ( 'at %s, %s' % (lineno, lexpos) ))
+
+def flatlist( l ):
+    nl = []
+    [ nl.extend( flatlist( x )) if isinstance(x, list) else nl.append(x)
+      for x in l ]
+    return nl
+
+def assetpath( fp ):
+    try :
+        pkg, relfile = fp.split(':')
+        filepath = join( __import__( pkg ).__file__, relfile )
+    except :
+        filepath = fp if fp.startswith('/') else join(os.getcwd(), fp)
+    fp = filepath if filepath.endswith('tss') else filepath + '.tss'
+    return fp
+

@@ -32,6 +32,10 @@ clean :
 	rm -rf dist;
 	rm -rf tss.egg-info;
 	rm -rf tss.egg-info/;
+	rm -rf tss/test/samplecss/*.css
+	rm -rf tss/test/samplecss/*.tss.py
+	rm -rf tss/test/egtss/*.css
+	rm -rf tss/test/egtss/*.tss.py
 	rm -rf `find ./ -name parsetsstab.py`;
 	rm -rf `find ./ -name "*.pyc"`;
 	rm -rf `find ./ -name "yacctab.py"`;

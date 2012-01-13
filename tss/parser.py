@@ -7,13 +7,11 @@
 """Parser grammer for TSS Extension language"""
 
 # Gotcha : None
-#   1. To provide browser compliance, `operator` non-terminal can also have,
-#           colon, equal, dot, gt, ask
-#      like,
-#           filter : progid:DXImageTransform.Microsoft.gradient(
-#                       startColorstr='#c2080b',endColorstr='#8c0408',
-#                       GradientType=0 )
 # Notes  :
+#   W3C reference :
+#     * Grammar, http://www.w3.org/TR/css3-syntax/
+#     * Selectors, http://www.w3.org/TR/selectors/
+#     * @page syntax rule, http://www.w3.org/TR/css3-page/
 # Todo   : 
 
 import logging, sys, codecs
@@ -138,10 +136,16 @@ class TSSParser( object ):
             print p[i],
         print
 
+    def _termwspac2nonterm( self, p, text, termcls, nontermcls ):
+        text1 = text.rstrip(' \t\r\n\f')
+        term, wspac = text[:len(text1)], text[len(text1):]
+        wc = WC( p.parser, None, S(p.parser, wspac), None )
+        return nontermcls( termcls(p.parser, term), wc )
+
     # ---------- Precedence and associativity of operators --------------------
 
     precedence = (
-        ('left', 'COMMA'), 
+        ('left', 'COMMA'),
         ('left', 'QMARK', 'COLON'),
         ('left', 'EQUAL'),
         ('left', 'GT', 'LT', 'AND', 'OR'),
@@ -163,25 +167,34 @@ class TSSParser( object ):
                 rc.append(t)
         return rc
 
-    def p_tss( self, p ):
-        """tss          : stylesheet
-                        | tss stylesheet"""
-        args = [ p[1], p[2] ] if len(p)==3 else [ None, p[1] ]
-        p[0] = Tss( p.parser, *args )
-        # TODO : Makes sure that charset, import and namespace non-terminals
-        # does not follow rulesets, media, page, font_face non-terminals
+    # TODO : Makes sure that charset, import and namespace non-terminals
+    # does not follow rulesets, media, page, font_face non-terminals
 
-    def p_stylesheet( self, p ):
-        """stylesheet   : cdata
+    def p_tss( self, p ):
+        """tss          : cdata
                         | charset
                         | namespace
                         | font_face
-                        | import
+                        | page
                         | media
                         | atrule
                         | rulesets
-                        | wc"""
-        p[0] = StyleSheet( p.parser, p[1] )
+                        | wc
+                        | tss cdata
+                        | tss charset
+                        | tss namespace
+                        | tss font_face
+                        | tss page
+                        | tss media
+                        | tss atrule
+                        | tss rulesets
+                        | tss wc"""
+        if len(p) == 3 :
+            p[2] = Rulesets( p.parser, p[2], None )
+            p[0] = Tss( p.parser, p[1], p[2] )
+        else :
+            p[1] = Rulesets( p.parser, p[1], None )
+            p[0] = Tss( p.parser, None, p[1] )
 
     #---- CDATA
 
@@ -202,110 +215,38 @@ class TSSParser( object ):
         x = [ (CHARSET_SYM, 1), p[2], (SEMICOLON, 3) ]
         p[0] = Charset( p.parser, *self._buildterms(p, x) )
 
-    #---- @import
-
-    def p_import_1( self, p ):
-        """import       : IMPORT_SYM string IDENT SEMICOLON
-                        | IMPORT_SYM uri IDENT SEMICOLON"""
-        mediums = Mediums( p.parser, None, None, None, IDENT(p.parser, p[3]) )
-        x = [ (IMPORT_SYM, 1), p[2], mediums, (SEMICOLON, 4) ]
-        p[0] = Import( p.parser, *self._buildterms(p, x) )
-
-    def p_import_2( self, p ):
-        """import       : IMPORT_SYM string IDENT S SEMICOLON
-                        | IMPORT_SYM uri IDENT S SEMICOLON"""
-        mediums = Mediums( p.parser, None, None, None, IDENT(p.parser, p[3]) )
-        x = [ (IMPORT_SYM, 1), p[2], mediums, (SEMICOLON, 4) ]
-        p[0] = Import( p.parser, *self._buildterms(p, x) )
-        
-    def p_import_3( self, p ):
-        """import       : IMPORT_SYM string IDENT mediums SEMICOLON
-                        | IMPORT_SYM uri IDENT mediums SEMICOLON"""
-        mediums = Mediums( p.parser, None, None, None, IDENT(p.parser, p[3]) )
-        p[4].pushident( mediums )
-        x = [ (IMPORT_SYM, 1), p[2], p[4], (SEMICOLON, 5) ]
-        p[0] = Import( p.parser, *self._buildterms(p, x) )
-
-    def p_import_4( self, p ):
-        """import       : IMPORT_SYM string SEMICOLON
-                        | IMPORT_SYM uri SEMICOLON"""
-        x = [ (IMPORT_SYM, 1), p[2], None, (SEMICOLON, 3) ]
-        p[0] = Import( p.parser, *self._buildterms(p, x) )
-
-
     #---- @namespace
 
     def p_namespace_1( self, p ):
-        """namespace    : NAMESPACE_SYM ident string SEMICOLON
-                        | NAMESPACE_SYM ident uri SEMICOLON"""
-        x = [ (NAMESPACE_SYM, 1), p[2], p[3], (SEMICOLON, 4) ]
-        p[0] = Namespace( p.parser, *self._buildterms(p, x) )
+        """namespacspec : NAMESPACE_SYM ident
+                        | NAMESPACE_SYM EXTN_VAR"""
+        if not isinstance(p[2], Ident) :
+            p[2] = self._termwspac2nonterm( p, p[2], EXTN_VAR, ExtnVar )
+        p[0] = [ NAMESPACE_SYM(p.parser, p[1]), p[2], None, None ]
 
     def p_namespace_2( self, p ):
-        """namespace    : NAMESPACE_SYM string SEMICOLON
-                        | NAMESPACE_SYM uri SEMICOLON"""
-        x = [ (NAMESPACE_SYM, 1), None, p[2], (SEMICOLON, 3) ]
-        p[0] = Namespace( p.parser, *self._buildterms(p, x) )
+        """namespacspec : NAMESPACE_SYM string
+                        | NAMESPACE_SYM uri
+                        | NAMESPACE_SYM EXTN_EXPR"""
+        if not isinstance(p[2], (String, Uri)) :
+            p[2] = self._termwspac2nonterm( p, p[2], EXTN_EXPR, ExtnExpr )
+        p[0] = [ NAMESPACE_SYM(p.parser, p[1]), None, p[2], None ]
 
-    #---- @media
+    def p_namespace_3( self, p ):
+        """namespacspec : namespacspec string
+                        | namespacspec uri
+                        | namespacspec EXTN_EXPR"""
+        if p[1][2] :
+            raise Exception( 'Multiple string or uri not allowed in namespace' )
+        if not isinstance(p[2], (String, Uri)) :
+            p[2] = self._termwspac2nonterm( p, p[2], EXTN_EXPR, ExtnExpr )
+        p[1][2] = p[2]
+        p[0] = p[1]
 
-    def p_media_1( self, p ):
-        """media        : MEDIA_SYM exprs openbrace rulesets closebrace"""
-        x = [ (MEDIA_SYM, 1), p[2], p[3], p[4], p[5] ]
-        p[0] = Media( p.parser, *self._buildterms(p, x) )
-
-    def p_media_2( self, p ):
-        """media        : MEDIA_SYM exprs openbrace closebrace"""
-        x = [ (MEDIA_SYM, 1), p[2], p[3], None, p[4] ]
-        p[0] = Media( p.parser, *self._buildterms(p, x) )
-
-    def p_mediums_1( self, p ):
-        """mediums      : mediums S COMMA IDENT"""
-        cls, val = p[3]
-        x = [ p[1], (S, 2), cls(p.parser, val), (IDENT, 4) ]
-        p[0] = Mediums( p.parser, *self._buildterms(p, x) )
-
-    def p_mediums_2( self, p ):
-        """mediums      : mediums COMMA IDENT"""
-        cls, val = p[2]
-        x = [ p[1], None, cls(p.parser, val), (IDENT, 3) ]
-        p[0] = Mediums( p.parser, *self._buildterms(p, x) )
-
-    def p_mediums_3( self, p ):
-        """mediums      : COMMA IDENT"""
-        cls, val = p[1]
-        x = [ None, None, cls(p.parser, val), (IDENT, 2) ]
-        p[0] = Mediums( p.parser, *self._buildterms(p, x) )
-
-    def p_mediums_4( self, p ):
-        """mediums      : S COMMA IDENT"""
-        cls, val = p[2]
-        x = [ None, (S, 2), cls(p.parser, val), (IDENT, 3) ]
-        p[0] = Mediums( p.parser, *self._buildterms(p, x) )
-
-    #---- @page
-
-    def p_page_1( self, p ):
-        """page         : PAGE_SYM ident block"""
-        x = [ (PAGE_SYM, 1), p[2], None, None, p[3] ]
-        p[0] = Page( p.parser, *self._buildterms(p, x) )
-
-    def p_page_2( self, p ):
-        """page         : PAGE_SYM COLON ident block"""
-        cls, val = p[2]
-        x = [ (PAGE_SYM, 1), None, cls(p.parser, val), p[3], p[4] ]
-        p[0] = Page( p.parser, *self._buildterms(p, x) )
-
-    def p_page_3( self, p ):
-        """page         : PAGE_SYM ident COLON ident block"""
-        cls, val = p[3]
-        x = [ (PAGE_SYM, 1), p[2], cls(p.parser, val), p[4], p[4] ]
-        p[0] = Page( p.parser, *self._buildterms(p, x) )
-
-    def p_page_4( self, p ):
-        """page         : PAGE_SYM block"""
-        x = [ (PAGE_SYM, 1), None, None, None, p[2] ]
-        p[0] = Page( p.parser, *self._buildterms(p, x) )
+    def p_namespace_4( self, p ):
+        """namespace    : namespacspec SEMICOLON"""
+        p[1][3] = SEMICOLON( p.parser, p[2] )
+        p[0] = Namespace( p.parser, *p[1] )
 
     #---- @font_face
 
@@ -340,24 +281,195 @@ class TSSParser( object ):
     def p_atrule_5( self, p ):
         """atrule       : ATKEYWORD expr openbrace rulesets closebrace"""
         term = ATKEYWORD(p.parser, p[1])
+        p[4] = Rulesets(p.parser, p[4], None)
         p[0] = AtRule( p.parser, term, p[2], None, None, (p[3], p[4], p[5]) )
 
     def p_atrule_6( self, p ):
         """atrule       : ATKEYWORD openbrace rulesets closebrace"""
         term = ATKEYWORD(p.parser, p[1])
+        p[3] = Rulesets(p.parser, p[3], None)
         p[0] = AtRule( p.parser, term, None, None, None, (p[2], p[3], p[4]) )
 
+    #---- @media
+
+    def p_media_1( self, p ):
+        """mediaspec    : MEDIA_SYM IDENT
+                        | MEDIA_SYM IDENT S """
+        x = [ (IDENT, 2), (S, 3) ] if len(p)==4 else [ (IDENT, 2), None ]
+        x = [ None, None ] + x
+        meds = Mediums( p.parser, *self._buildterms(p, x) )
+        p[0] = [ MEDIA_SYM(p.parser, p[1]), meds, None, None, None, None ]
+
+    def p_media_2( self, p ):
+        """mediaspec    : MEDIA_SYM EXTN_VAR"""
+        p[2] = self._termwspac2nonterm( p, p[2], EXTN_VAR, ExtnVar )
+        x = [ None, None, p[2], None ]
+        meds = Mediums( p.parser, *self._buildterms(p, x) )
+        p[0] = [ MEDIA_SYM(p.parser, p[1]), meds, None, None, None, None ]
+
+    def p_media_3( self, p ):
+        """mediaspec    : mediaspec COMMA IDENT
+                        | mediaspec COMMA IDENT S"""
+        cls, value = p[2]
+        x = [ (IDENT, 3), (S, 4) ] if len(p)==5 else [ (IDENT, 3), None ]
+        x = [ p[1][1], cls(p.parser, value) ] + x
+        p[1][1] = Mediums( p.parser, *self._buildterms(p, x) )
+        p[0] = p[1]
+
+    def p_media_4( self, p ):
+        """mediaspec    : mediaspec COMMA EXTN_VAR"""
+        cls, value = p[2]
+        p[3] = self._termwspac2nonterm( p, p[3], EXTN_VAR, ExtnVar )
+        x = [ p[1][1], cls(p.parser, value), p[3], None ]
+        p[1][1] = Mediums( p.parser, *self._buildterms(p, x) )
+        p[0] = p[1]
+
+    def p_media_5( self, p ):
+        """media        : mediaspec exprs openbrace rulesets closebrace"""
+        p[4] = Rulesets(p.parser, p[4], None)
+        p[1][2], p[1][3], p[1][4], p[1][5] = p[2], p[3], p[4], p[5]
+        p[0] = Media( p.parser, *p[1] )
+
+    def p_media_6( self, p ):
+        """media        : mediaspec exprs openbrace closebrace"""
+        p[1][2], p[1][3], p[1][4], p[1][5] = p[2], p[3], None, p[4]
+        p[0] = Media( p.parser, *p[1] )
+
+    def p_media_7( self, p ):
+        """media        : mediaspec openbrace rulesets closebrace"""
+        p[3] = Rulesets(p.parser, p[3], None)
+        p[1][2], p[1][3], p[1][4], p[1][5] = None, p[2], p[3], p[4]
+        p[0] = Media( p.parser, *p[1] )
+
+    def p_media_8( self, p ):
+        """media        : mediaspec openbrace closebrace"""
+        p[1][2], p[1][3], p[1][4], p[1][5] = None, p[2], None, p[3]
+        p[0] = Media( p.parser, *p[1] )
+
+    #---- @page
+
+    def p_page_1( self, p ):
+        """page         : PAGE_SYM ident block
+                        | PAGE_SYM EXTN_VAR block"""
+        if not isinstance(p[2], Ident) :
+            p[2] = self._termwspac2nonterm( p, p[2], EXTN_VAR, ExtnVar )
+        x = [ (PAGE_SYM, 1), p[2], None, None, p[3] ]
+        p[0] = Page( p.parser, *self._buildterms(p, x) )
+
+    def p_page_2( self, p ):
+        """page         : PAGE_SYM COLON ident block
+                        | PAGE_SYM COLON EXTN_VAR block"""
+        cls, val = p[2]
+        if not isinstance(p[3], Ident) :
+            p[3] = self._termwspac2nonterm( p, p[3], EXTN_VAR, ExtnVar )
+        x = [ (PAGE_SYM, 1), None, cls(p.parser, val), p[3], p[4] ]
+        p[0] = Page( p.parser, *self._buildterms(p, x) )
+
+    def p_page_3( self, p ):
+        """page         : PAGE_SYM ident COLON ident block
+                        | PAGE_SYM EXTN_VAR COLON ident block
+                        | PAGE_SYM ident COLON EXTN_VAR block
+                        | PAGE_SYM EXTN_VAR COLON EXTN_VAR block"""
+        if not isinstance(p[2], Ident) :
+            p[2] = self._termwspac2nonterm( p, p[2], EXTN_VAR, ExtnVar )
+        cls, val = p[3]
+        if not isinstance(p[4], Ident) :
+            p[4] = self._termwspac2nonterm( p, p[4], EXTN_VAR, ExtnVar )
+        x = [ (PAGE_SYM, 1), p[2], cls(p.parser, val), p[4], p[5] ]
+        p[0] = Page( p.parser, *self._buildterms(p, x) )
+
+    def p_page_4( self, p ):
+        """page         : PAGE_SYM block"""
+        x = [ (PAGE_SYM, 1), None, None, None, p[2] ]
+        p[0] = Page( p.parser, *self._buildterms(p, x) )
+
+    def p_pagemargin_1( self, p ):
+        """pagemargin   : PAGE_MARGIN_SYM block"""
+        term = PAGE_MARGIN_SYM(p.parser, p[1])
+        p[0] = PageMargin( p.parser, term, p[2] )
+
+    def p_pagemargin_2( self, p ):
+        """pagemargin   : PAGE_MARGIN_SYM"""
+        term = PAGE_MARGIN_SYM(p.parser, p[1])
+        p[0] = PageMargin( p.parser, term, None )
+
+    #---- @import
+
+    def p_import_1( self, p ):
+        """importspec   : IMPORT_SYM string
+                        | IMPORT_SYM uri"""
+        p[0] = [ IMPORT_SYM(p.parser, p[1]), p[2], None, None ]
+
+    def p_import_2( self, p ):
+        """importspec   : importspec IDENT
+                        | importspec IDENT S"""
+        x = [ (IDENT, 2), (S, 3) ] if len(p)==4 else [ (IDENT, 2), None ]
+        x = [ p[1][2], None ] + x
+        p[1][2] = Mediums( p.parser, *self._buildterms(p, x) )
+        p[0] = p[1]
+
+    def p_import_3( self, p ):
+        """importspec   : importspec EXTN_VAR"""
+        p[2] = self._termwspac2nonterm( p, p[2], EXTN_VAR, ExtnVar )
+        x = [ p[1][2], None, p[2], None ]
+        p[1][2] = Mediums( p.parser, *self._buildterms(p, x) )
+        p[0] = p[1]
+
+    def p_import_4( self, p ):
+        """importspec   : importspec COMMA IDENT
+                        | importspec COMMA IDENT S"""
+        x = [ (IDENT, 3), (S, 4) ] if len(p)==5 else [ (IDENT, 3), None ]
+        cls, value = p[2]
+        x = [ p[1][2], cls(p.parser, value) ] + x
+        p[1][2] = Mediums( p.parser, *self._buildterms(p, x) )
+        p[0] = p[1]
+
+    def p_import_5( self, p ):
+        """importspec   : importspec COMMA EXTN_VAR"""
+        cls, value = p[2]
+        p[3] = self._termwspac2nonterm( p, p[3], EXTN_VAR, ExtnVar )
+        x = [ p[1][2], cls(p.parser, value), p[3], None ]
+        p[1][2] = Mediums( p.parser, *self._buildterms(p, x) )
+        p[0] = p[1]
+
+    def p_import_6( self, p ):
+        """import       : importspec SEMICOLON"""
+        p[1][3] = SEMICOLON( p.parser, p[2] )
+        p[0] = Import( p.parser, *p[1] )
+
+    #---- extend
+
+    def p_extend_1( self, p ):
+        """extend       : EXTEND_SYM selector SEMICOLON"""
+        x = [ (EXTEND_SYM, 1), p[2], (SEMICOLON, 3), None ]
+        p[0] = Extend( p.parser, *self._buildterms(p, x) ]
+    
+    def p_extend_2( self, p ):
+        """extend       : EXTEND_SYM selector SEMICOLON wc"""
+        x = [ (EXTEND_SYM, 1), p[2], (SEMICOLON, 3), p[4] ]
+        p[0] = Extend( p.parser, *self._buildterms(p, x) ]
+    
     #---- ruleset
 
     # TODO : only `&` is allowd in DLIMIT terminal, this constraint should
     # be checked inside `ElementName` class
-    def p_rulesets( self, p ):
+    def p_rulesets_1( self, p ):
         """rulesets     : ruleset
-                        | page
+                        | import
                         | rulesets ruleset
-                        | rulesets page"""
+                        | rulesets import"""
         args = [ p[1], p[2] ] if len(p) == 3 else [ None, p[1] ]
         p[0] = Rulesets( p.parser, *args )
+
+    def p_rulesets_2( self, p ):
+        """rulesets     : EXTN_STATEMENT
+                        | rulesets EXTN_STATEMENT"""
+        if len(p) == 3 :
+            p[1] = self._termwspac2nonterm(p, p[1], EXTN_STATEMENT, ExtnStatement)
+            p[0] = Rulesets( p.parser, None, p[1] )
+        else :
+            p[2] = self._termwspac2nonterm(p, p[2], EXTN_STATEMENT, ExtnStatement)
+            p[0] = Rulesets( p.parser, p[1], p[2] )
 
     def p_ruleset_1( self, p ):
         """ruleset      : block
@@ -377,7 +489,10 @@ class TSSParser( object ):
         p[0] = Selectors( p.parser, *self._buildterms(p, x) )
 
     def p_selector_1( self, p ):
-        """selector     : simpselector"""
+        """selector     : simpselector
+                        | EXTN_EXPR """
+        if not isinstance(p[1], SimpleSelector) :
+            p[1] = self._termwspac2nonterm( p, p[1], EXTN_EXPR, ExtnExpr )
         p[0] = Selector( p.parser, None, None, p[1] )
 
     def p_selector_2( self, p ):
@@ -392,7 +507,10 @@ class TSSParser( object ):
         p[0] = Selector( p.parser, p[1], cls(p.parser, value), p[3] )
 
     def p_simpselector_1( self, p ):
-        """simpselector : sel_ident"""
+        """simpselector : sel_ident
+                        | SEL_EXTN_VAR"""
+        if not isinstance(p[1], Ident) :
+            p[1] = self._termwspac2nonterm( p, p[1], EXTN_VAR, ExtnVar )
         p[0] = SimpleSelector( p.parser, None, None, p[1], None, None, None )
 
     def p_simpselector_2( self, p ):
@@ -400,13 +518,17 @@ class TSSParser( object ):
         p[0] = SimpleSelector( p.parser, None, None, None, p[1], None, None )
 
     def p_simpselector_3( self, p ):
-        """simpselector : SEL_STAR"""
+        """simpselector : SEL_STAR
+                        | AMPERSAND"""
         cls, value = p[1]
         term = cls(p.parser, value)
         p[0] = SimpleSelector( p.parser, term, None, None, None, None, None )
 
     def p_simpselector_4( self, p ):
-        """simpselector : DOT sel_ident"""
+        """simpselector : DOT sel_ident
+                        | DOT EXTN_VAR"""
+        if not isinstance(p[2], Ident) :
+            p[2] = self._termwspac2nonterm( p, p[2], EXTN_VAR, ExtnVar )
         cls, value = p[1]
         term = cls(p.parser, value)
         p[0] = SimpleSelector( p.parser, None, term, p[2], None, None, None )
@@ -425,7 +547,26 @@ class TSSParser( object ):
         p[0] = Attrib( p.parser, p[1], p[2], p[3], p[4], p[5] )
 
     def p_attrib_2( self, p ):
-        """attrib       : opensqr sel_ident closesqr"""
+        """attrib       : opensqr EXTN_VAR attroperator sel_ident closesqr
+                        | opensqr EXTN_VAR attroperator sel_string closesqr"""
+        p[2] = self._termwspac2nonterm( p, p[2], EXTN_VAR, ExtnVar )
+        p[0] = Attrib( p.parser, p[1], p[2], p[3], p[4], p[5] )
+
+    def p_attrib_3( self, p ):
+        """attrib       : opensqr sel_ident attroperator EXTN_VAR closesqr"""
+        p[4] = self._termwspac2nonterm( p, p[4], EXTN_VAR, ExtnVar )
+        p[0] = Attrib( p.parser, p[1], p[2], p[3], p[4], p[5] )
+
+    def p_attrib_4( self, p ):
+        """attrib       : opensqr sel_ident attroperator EXTN_EXPR closesqr"""
+        p[4] = self._termwspac2nonterm( p, p[4], EXTN_EXPR, ExtnExpr )
+        p[0] = Attrib( p.parser, p[1], p[2], p[3], p[4], p[5] )
+
+    def p_attrib_5( self, p ):
+        """attrib       : opensqr sel_ident closesqr
+                        | opensqr EXTN_VAR closesqr"""
+        if not isinstance(p[2], Ident) :
+            p[2] = self._termwspac2nonterm( p, p[2], EXTN_VAR, ExtnVar )
         p[0] = Attrib( p.parser, p[1], p[2], None, None, p[3] )
 
     def p_attroperator( self, p ):
@@ -445,10 +586,23 @@ class TSSParser( object ):
         p[0] = Pseudo( p.parser, None, cls(p.parser, value), p[2] )
 
     def p_pseudo_2( self, p ):
+        """pseudo       : SEL_COLON EXTN_VAR"""
+        cls, value = p[1]
+        p[2] = self._termwspac2nonterm( p, p[2], EXTN_VAR, ExtnVar )
+        p[0] = Pseudo( p.parser, None, cls(p.parser, value), p[2] )
+
+    def p_pseudo_3( self, p ):
         """pseudo       : SEL_COLON SEL_COLON sel_ident
                         | SEL_COLON SEL_COLON func_call"""
         cls1, val1 = p[1]
         cls2, val2 = p[2]
+        p[0] = Pseudo( p.parser, cls1(p.parser,val1), cls2(p.parser,val2), p[3] )
+
+    def p_pseudo_4( self, p ):
+        """pseudo       : SEL_COLON SEL_COLON EXTN_VAR"""
+        cls1, val1 = p[1]
+        cls2, val2 = p[2]
+        p[3] = self._termwspac2nonterm( p, p[3], EXTN_VAR, ExtnVar )
         p[0] = Pseudo( p.parser, cls1(p.parser,val1), cls2(p.parser,val2), p[3] )
 
     #---- Declaration block
@@ -460,58 +614,105 @@ class TSSParser( object ):
         p[0] = Block( p.parser, *args )
 
     def p_declarations_1( self, p ):
-        """declarations : declaration
+        """declarations : extend
+                        | declaration
+                        | pagemargin
                         | rulesets"""
+        p[1] = Rulesets(p.parser, p[1], None)
         p[0] = Declarations( p.parser, None, None, None, p[1] )
 
-    def p_declarations_2( self, p ):
+    def p_declarations_3( self, p ):
+        """declarations : pagemargin declaration
+                        | rulesets declaration"""
+        p[1] = Rulesets(p.parser, p[1], None)
+        dcls = Declarations( p.parser, None, None, None, p[1] )
+        p[0] = Declarations( p.parser, dcls, None, None, p[2] )
+
+    def p_declarations_4( self, p ):
         """declarations : declarations SEMICOLON"""
         term = SEMICOLON( p.parser, p[2] )
         p[0] = Declarations( p.parser, p[1], term, None, None )
 
-    def p_declarations_3( self, p ):
+    def p_declarations_5( self, p ):
         """declarations : declarations SEMICOLON declaration"""
         term = SEMICOLON( p.parser, p[2] )
         p[0] = Declarations( p.parser, p[1], term, None, p[3] )
 
-    def p_declarations_4( self, p ):
+    def p_declarations_6( self, p ):
         """declarations : declarations SEMICOLON wc"""
         term = SEMICOLON( p.parser, p[2] )
         p[0] = Declarations( p.parser, p[1], term, p[3], None )
 
-    def p_declarations_5( self, p ):
+    def p_declarations_7( self, p ):
         """declarations : declarations SEMICOLON wc declaration"""
         term = SEMICOLON( p.parser, p[2] )
         p[0] = Declarations( p.parser, p[1], term, p[3], p[4] )
 
-    def p_declarations_6( self, p ):
-        """declarations : declarations rulesets"""
-        p[0] = Declarations( p.parser, p[1], None, None, p[3] )
+    def p_declarations_8( self, p ):
+        """declarations : declarations rulesets
+                        | declarations pagemargin"""
+        p[2] = Rulesets(p.parser, p[2], None)
+        p[0] = Declarations( p.parser, p[1], None, None, p[2] )
+
+    def p_declarations_9( self, p ):
+        """declarations : declarations pagemargin declaration
+                        | declarations rulesets declaration"""
+        p[2] = Rulesets(p.parser, p[2], None)
+        dcls = Declarations( p.parser, p[1], None, None, p[2] )
+        p[0] = Declarations( p.parser, dcls, None, None, p[3] )
 
     def p_declaration_1( self, p ):
-        """declaration  : ident COLON exprs prio"""
+        """declaration  : ident COLON exprs
+                        | ident COLON EXTN_EXPR
+                        | EXTN_VAR COLON exprs
+                        | EXTN_VAR COLON EXTN_EXPR"""
+        if not isinstance(p[1], Ident) :
+            p[1] = self._termwspac2nonterm( p, p[1], EXTN_VAR, ExtnVar )
         cls, value = p[2]
-        x = [ None, p[1], cls(p.parser, value), p[3], p[4] ]
-        p[0] = Declaration( p.parser, *self._buildterms(p, x) )
-
-    def p_declaration_2( self, p ):
-        """declaration  : ident COLON exprs"""
-        cls, value = p[2]
+        if not isinstance(p[3], Exprs) :
+            p[3] = self._termwspac2nonterm( p, p[3], EXTN_EXPR, ExtnExpr )
         x = [ None, p[1], cls(p.parser, value), p[3], None ]
         p[0] = Declaration( p.parser, *self._buildterms(p, x) )
 
+    def p_declaration_2( self, p ):
+        """declaration  : ident COLON exprs prio
+                        | ident COLON EXTN_EXPR prio
+                        | EXTN_VAR COLON exprs prio
+                        | EXTN_VAR COLON EXTN_EXPR prio"""
+        if not isinstance(p[1], Ident) :
+            p[1] = self._termwspac2nonterm( p, p[1], EXTN_VAR, ExtnVar )
+        cls, value = p[2]
+        if not isinstance(p[3], Exprs) :
+            p[3] = self._termwspac2nonterm( p, p[3], EXTN_EXPR, ExtnExpr )
+        x = [ None, p[1], cls(p.parser, value), p[3], p[4] ]
+        p[0] = Declaration( p.parser, *self._buildterms(p, x) )
+
     def p_declaration_3( self, p ):
-        """declaration  : PREFIXSTAR ident COLON exprs prio"""
+        """declaration  : PREFIXSTAR ident COLON exprs
+                        | PREFIXSTAR ident COLON EXTN_EXPR
+                        | PREFIXSTAR EXTN_VAR COLON exprs
+                        | PREFIXSTAR EXTN_VAR COLON EXTN_EXPR"""
         cls1, val1 = p[1]
+        if not isinstance(p[2], Ident) :
+            p[2] = self._termwspac2nonterm( p, p[2], EXTN_VAR, ExtnVar )
         cls2, val2 = p[3]
-        x = [ cls1(p.parser, val1), p[2], cls2(p.parser, val2), p[4], p[5] ]
+        if not isinstance(p[4], Exprs) :
+            p[4] = self._termwspac2nonterm( p, p[4], EXTN_EXPR, ExtnExpr )
+        x = [ cls1(p.parser, val1), p[2], cls2(p.parser, val2), p[4], None ]
         p[0] = Declaration( p.parser, *self._buildterms(p, x) )
 
     def p_declaration_4( self, p ):
-        """declaration  : PREFIXSTAR ident COLON exprs"""
+        """declaration  : PREFIXSTAR ident COLON exprs prio
+                        | PREFIXSTAR ident COLON EXTN_EXPR prio
+                        | PREFIXSTAR EXTN_VAR COLON exprs prio
+                        | PREFIXSTAR EXTN_VAR COLON EXTN_EXPR prio"""
         cls1, val1 = p[1]
+        if not isinstance(p[2], Ident) :
+            p[2] = self._termwspac2nonterm( p, p[2], EXTN_VAR, ExtnVar )
         cls2, val2 = p[3]
-        x = [ cls1(p.parser, val1), p[2], cls2(p.parser, val2), p[4], None ]
+        if not isinstance(p[4], Exprs) :
+            p[3] = self._termwspac2nonterm( p, p[3], EXTN_EXPR, ExtnExpr )
+        x = [ cls1(p.parser, val1), p[2], cls2(p.parser, val2), p[4], p[5] ]
         p[0] = Declaration( p.parser, *self._buildterms(p, x) )
 
     def p_prio( self, p ):
@@ -543,7 +744,8 @@ class TSSParser( object ):
         p[0] = Expr( p.parser, *args )
 
     def p_expr_2( self, p ):
-        """expr         : openparan expr closeparan"""
+        """expr         : openparan expr closeparan
+                        | openparan exprcolon closeparan"""
         expr = ExprParan( p.parser, p[1], p[2], p[3] )
         p[0] = Expr( p.parser, None, expr, None, None, None )
 
@@ -558,7 +760,6 @@ class TSSParser( object ):
         """expr         : expr PLUS expr
                         | expr MINUS expr
                         | expr STAR expr
-                        | expr FWDSLASH expr
                         | expr AND expr
                         | expr OR expr"""
         cls, value = p[2]
@@ -566,6 +767,12 @@ class TSSParser( object ):
         p[0] = Expr( p.parser, None, None, p[1], term, p[3] )
 
     def p_expr_5( self, p ):
+        """expr         : expr FWDSLASH expr"""
+        cls, value = p[2]
+        term = cls(p.parser, value)
+        p[0] = Expr( p.parser, None, None, p[1], term, p[3] )
+
+    def p_expr_6( self, p ):
         """expr         : expr EQUAL expr
                         | expr GT expr
                         | expr LT expr"""
@@ -573,7 +780,7 @@ class TSSParser( object ):
         term = cls(p.parser, value)
         p[0] = Expr( p.parser, None, None, p[1], term, p[3] )
 
-    def p_expr_6( self, p ):
+    def p_expr_7( self, p ):
         """expr         : MINUS expr %prec UNARY
                         | PLUS expr %prec UNARY"""
         cls, value = p[1]
@@ -586,7 +793,7 @@ class TSSParser( object ):
         term = cls(p.parser, value)
         p[0] = Expr( p.parser, None, None, p[1], term, p[3] )
 
-    def p_term( self, p ):
+    def p_term_1( self, p ):
         """term         : number
                         | dimension
                         | func_call
@@ -594,11 +801,18 @@ class TSSParser( object ):
                         | string
                         | uri
                         | unicoderange
-                        | hash"""
+                        | hash
+                        | EXTN_VAR"""
+        ts = (Number, Dimension, FuncCall, Ident, String, Uri, UnicodeRange, Hash)
+        if not isinstance(p[1], ts) :
+            p[1] = self._termwspac2nonterm( p, p[1], EXTN_VAR, ExtnVar )
         p[0] = Term( p.parser, p[1] )
 
     def p_func_call_1( self, p ):
-        """func_call    : FUNCTION exprs closeparan"""
+        """func_call    : FUNCTION exprs closeparan
+                        | FUNCTION EXTN_EXPR closeparan"""
+        if not isinstance(p[2], Exprs) :
+            p[2] = self._termwspac2nonterm( p, p[2], EXTN_EXPR, ExtnExpr )
         x = [ (FUNCTION, 1), p[2], None, p[3] ]
         p[0] = FuncCall( p.parser, *self._buildterms(p, x) )
 

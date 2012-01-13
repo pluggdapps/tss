@@ -9,14 +9,10 @@ from   StringIO     import StringIO
 prolog = """\
 from   StringIO     import StringIO 
 from   tss.runtime  import * 
-from   tss.ast      import NUMBER_, STRING_, \\
-                           EMS_, EXS_, LENGTHPX_, LENGTHCM_, LENGTHMM_, \\
-                           LENGTHIN_, LENGTHPT_, LENGTHPC_, ANGLEDEG_, \\
-                           ANGLERAD_, ANGLEGRAD_, TIMEMS_, TIMES_, FREQHZ_, \\
-                           FREQKHZ_, PERCENTAGE_
+import tss.functions
 """
 
-footer = """\
+footer = u"""\
 _tsshash = %r
 _tssfile = %r """
 
@@ -41,7 +37,7 @@ class InstrGen( object ) :
 
     def cr( self, count=1 ):
         """Move `pytext` next line preserving the current indentation"""
-        self.outfd.write( '\n'*count )
+        self.outfd.write( u'\n'*count )
         self.outfd.write( self.pyindent )
 
     def outline( self, line, count=1 ):
@@ -66,14 +62,14 @@ class InstrGen( object ) :
     def comment( self, comment, force=False ):
         if self.devmod or force :
             self.flushtext()
-            self.outline( '# ' + u' '.join(comment.rstrip('\r\n').splitlines()) )
+            self.outline( u'# ' + u' '.join(comment.rstrip('\r\n').splitlines()) )
 
     def flushtext( self ):
         """self.optimaltext is used to maintains the list of pytext content that
         are to be flushed into the file. This list can be used for 
         local optimization"""
         if self.optimaltext :
-            self.outline( '_m.extend( %s )' % self.optimaltext )
+            self.outline( u'_m.extend( %s )' % self.optimaltext )
             self.optimaltext = []
 
     def footer( self, tsshash, tssfile ):
@@ -94,21 +90,21 @@ class InstrGen( object ) :
     def indent( self ):
         if self.uglyhtml == False :
             self.flushtext()
-            self.outline( '_m.indent()' )
+            self.outline( u'_m.indent()' )
 
     def upindent( self, up=u'' ):
         if self.uglyhtml == False :
             self.flushtext()
-            self.outline( '_m.upindent( up=%r )' % up )
+            self.outline( u'_m.upindent( up=%r )' % up )
 
     def downindent( self, down=u'' ):
         if self.uglyhtml == False :
             self.flushtext()
-            self.outline( '_m.downindent( down=%r )' % down )
+            self.outline( u'_m.downindent( down=%r )' % down )
 
     def pushbuf( self ):
         self.flushtext()
-        self.outline( '_m.pushbuf()' )
+        self.outline( u'_m.pushbuf()' )
 
     def pushtext( self, text, force=False ):
         self.optimaltext.append( text )
@@ -116,14 +112,14 @@ class InstrGen( object ) :
 
     def pushobj( self, objstr ):
         self.flushtext()
-        self.outline( '_m.append( %s )' % objstr )
+        self.outline( u'_m.append( %s )' % objstr )
 
     def popappend( self, astext=True ):
         self.flushtext()
         if astext == True :
-            self.outline( '_m.append( _m.popbuftext() )' )
+            self.outline( u'_m.append( _m.popbuftext() )' )
         else :
-            self.outline( '_m.append( _m.popbuf() )' )
+            self.outline( u'_m.append( _m.popbuf() )' )
 
     def putstatement( self, stmt ):
         self.flushtext()
@@ -132,18 +128,24 @@ class InstrGen( object ) :
     def popreturn( self, astext=True ):
         self.flushtext()
         if astext == True :
-            self.outline( 'return _m.popbuftext()' )
+            self.outline( u'return _m.popbuftext()' )
         else :
-            self.outline( 'return _m.popbuf()' )
+            self.outline( u'return _m.popbuf()' )
+
+    def evalexprs( self, code, filters ):
+        code = code.strip()
+        if code :
+            self.flushtext()
+            self.outline(u'_m.append( _m.evalexprs(%s, %s) )' % (code, filters))
 
     def evalfun( self, fncall ):
         """Evaluate `fncall` string and push the resulting string value into
         stack."""
         self.flushtext()
-        self.outline( '_m.append( _m.evalexprs( %s, "" ))' % fncall.strip() )
+        self.outline( u'_m.append( tss.functions.%s )' % fncall.strip() )
 
     def evalunary( self ):
-        self.outline( '_m.evalunary()' )
+        self.outline( u'_m.evalunary()' )
 
     def evalbinary( self ):
-        self.outline( '_m.evalbinary()' )
+        self.outline( u'_m.evalbinary()' )

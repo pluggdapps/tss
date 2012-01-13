@@ -3,44 +3,54 @@
 import os, sys, codecs, shutil
 from   optparse         import OptionParser
 from   os.path          import abspath, join, isdir, basename
+
+from   tss              import tss_cmdline
 from   tss.parser       import TSSParser
 
 THISDIR = abspath( '.' )
 
+def test_dump( tu, reftext ):
+    dumptext = tu.dump()
+    if reftext != dumptext :
+        txtlen = len(reftext) if len(reftext) < len(dumptext) else len(dumptext)
+        diff = [ i for i in range(txtlen) if reftext[i] != dumptext[i] ]
+        off = diff and diff[0] or len(reftext)
+        codecs.open('a', mode='w', encoding='utf-8').write(reftext)
+        codecs.open('b', mode='w', encoding='utf-8').write(dumptext)
+        return False
+    else :
+        return True
+
+def test_translate( tssloc, options ):
+    tss_cmdline( tssloc )
+    tsstext = codecs.open(tssloc, encoding='utf-8-sig',).read()
+    cssfile = tssloc[:-4]+'.css'
+    csstext = codecs.open(cssfile, encoding='utf-8-sig').read()
+    if options.rmonsuccess :
+        os.remove(tssloc)
+        os.remove(tssloc+'.py')
+        os.remove(cssfile)
+    return csstext == tsstext
+
 def test_execute( f, options ) :
     print "Testing %r ...\n" % f,
-    txt = open(f).read(4)
-    if chr(0xef) == txt[0] and chr(0xbb) == txt[1] and chr(0xbf) == txt[2] :
-        fd = codecs.open(f, encoding='utf-8-sig')
-        fd.seek(3)
-        csstext = fd.read()
-    else :
-        csstext = codecs.open(f, encoding='utf-8-sig').read()
-
+    csstext = codecs.open(f, encoding='utf-8-sig').read()
     tssparser = TSSParser( debug=int(options.debug) )
     tu = tssparser.parse( csstext, debuglevel=int(options.debug) )
+    tu.validate()
     rc = None
     if options.show :
         tu.show()
     else :
-        dumptext = tu.dump()
-        if hasattr( tssparser, 'error_propertyname_prefix' ) and \
-           tssparser.error_propertyname_prefix :
-            print "Error : propertyname_prefix"
-            rc = 'knownerror'
-            if options.rmonsuccess : os.remove(f)
-        elif csstext != dumptext :
-            txtlen = len(csstext) if len(csstext) < len(dumptext) else len(dumptext)
-            diff = [ i for i in range(txtlen) if csstext[i] != dumptext[i] ]
-            off = diff and diff[0] or len(csstext)
-            codecs.open('a', mode='w', encoding='utf-8').write(csstext)
-            codecs.open('b', mode='w', encoding='utf-8').write(dumptext)
-            print "(fail at %s)" % off
+        if test_dump( tu, csstext ) == False :
+            print '(dump failed)'
             rc = 'failure'
-        else :
-            print "(success)"
-            rc = 'success'
-            if options.rmonsuccess : os.remove(f)
+        elif test_translate( f, options ) == False :
+            print '(translate failed)'
+            rc = 'failure'
+        print '(sucess)'
+        rc = 'success'
+    if rc == 'failure' : sys.exit(1)
     return rc
 
 def test_samplecss( cssdir, options ) :

@@ -83,7 +83,7 @@ class Compiler( object ):
             code = compile( pytext, self.tssfile, 'exec' )
         else :
             # pytext will be in unicode
-            pytext = self.topy( tsshash=self.tsslookup.tsshash )
+            pytext = self.topy()
             self.tsslookup.pytext = pytext = pytext.encode( self.encoding )
             code = compile( pytext, self.tssfile, 'exec' )
 
@@ -91,19 +91,20 @@ class Compiler( object ):
             self._memcache.setdefault( self.tsslookup.hashkey, code )
         return code
 
-    def toast( self ):
+    def toast( self, validate=True ):
         tsstext = self.tsslookup.tsstext
         tu = self.tssparser.parse( tsstext, tssfile=self.tssfile )
+        tu.validate() if validate else None
         return tu
 
-    def topy( self, *args, **kwargs ):
+    def topy( self ):
         tu = self.toast()
+        table = {
+            'tssfile' : self.tssfile,
+            'tsshash' : self.tsslookup.tsshash
+        }
         if tu :
-            tu.validate()
-            tu.headpass1( self.igen )                   # Head pass, phase 1
-            tu.headpass2( self.igen )                   # Head pass, phase 2
-            tu.generate( self.igen, *args, **kwargs )   # Generation
-            tu.tailpass( self.igen )                    # Tail pass
+            tu.generate( self.igen, table ) # Generate intermediate py file
             return self.igen.codetext()
         else :
             raise
