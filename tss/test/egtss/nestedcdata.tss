@@ -1,0 +1,16 @@
+#main p {
+  color: #00ff00;
+
+  /* IE7 adjustments */
+  <!--[if IE]> html>body .ymemforminput { margin-top: 8px; }
+  <![endif]-->
+
+  .redbox {
+    /* IE7 adjustments */
+    <!--[if IE]> html>body .ybbrotr .hd { margin-bottom: 10px; }
+    <![endif]-->
+
+    background-color: #ff0000;
+  }
+}
+

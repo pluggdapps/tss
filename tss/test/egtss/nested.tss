@@ -1,0 +1,14 @@
+#main p {
+  color: #00ff00;
+  .redbox {
+    background-color: #ff0000;
+    color: #000000;
+    body.firefox & { margin : 2px; }
+  }
+  /* Continuing */
+  width: 97%;
+  p, div {
+    a, span { &:hover { padding: 2em;} font-weight: bold; }
+    font-size: 2em;
+  }
+}

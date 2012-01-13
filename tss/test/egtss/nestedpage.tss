@@ -1,0 +1,21 @@
+#main p {
+  color: #00ff00;
+   @page { color:red; }
+   @page :right { color:red; }
+   @page CompanyLetterHead:first { color:red; } /*  identifier and pseudo page. */
+   @page:first { color:red; }
+
+  .redbox {
+    background-color: #ff0000;
+
+    @page {
+       @top-left { color:red; /* document name */ }
+    }
+    @page :left { @left-middle }
+
+    @page :left { @bottom-left-corner { color:red; /* left page numbers */ }}
+    @page :first {
+        @bottom-right-corner { color:red; /* empty footer */ }
+    }
+  }
+}

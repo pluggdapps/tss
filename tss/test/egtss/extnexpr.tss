@@ -1,0 +1,5 @@
+$fontsize =  12px;
+$lineheight = 30px;
+p {
+  font: ${fontsize}/${lineheight};
+}
