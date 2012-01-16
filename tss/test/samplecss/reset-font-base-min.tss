@@ -47,7 +47,7 @@ button{overflow:visible;width:auto}
 .hidden{display:none;visibility:hidden}
 .visuallyhidden{clip:rect(1px,1px,1px,1px);position:absolute!important}
 .invisible{visibility:hidden}
-.clearfix:before,.clearfix:after{content:"\0020";display:block;height:0;visibility:hidden}
+.clearfix:before,.clearfix:after{content:"0020";display:block;height:0;visibility:hidden}
 .clearfix:after{clear:both}
 .clearfix{zoom:1}
 h1,h2,h3,h4,h5,h6,strong,dt,strong,th{font-weight:bold}
