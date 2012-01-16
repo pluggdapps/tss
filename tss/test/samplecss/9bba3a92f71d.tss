@@ -627,7 +627,7 @@ h4 a:hover,h3 a:hover{color:#990101;}
 margin-bottom:25px;}
 #checkoutprogress ul{display:inline;margin-left:0;padding-left:0;border:none;}
 #checkoutprogress ul li{margin-left:0;padding-left:2px;display:inline;list-style:none;}
-#checkoutprogress ul li:before{content:"\0020 \0020 \0020 \00BB \0020";display:inline;list-style:none;}
+#checkoutprogress ul li:before{content:"0020 0020 0020 00BB 0020";display:inline;list-style:none;}
 #checkoutprogress ul li.first:before{content:" ";}
 #checkoutprogress li.active{background-color:#ccc;}
 .inline-copyright{color:black;text-align:right;margin-bottom:3px;font-size:9px;font-family:"Times New Roman",Georgia,serif;line-height:1.33;}
