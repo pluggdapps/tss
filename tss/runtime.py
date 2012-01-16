@@ -9,11 +9,13 @@
 #       _m, _tsshash, _tssfile
 #       StringIO, tss
 
+import re
+
 __all__ = [ 'StackMachine', 'Namespace',
             'EMS_', 'EXS_', 'LENGTHPX_', 'LENGTHCM_', 'LENGTHMM_', 'LENGTHIN_',
             'LENGTHPT_', 'LENGTHPC_', 'ANGLEDEG_', 'ANGLERAD_', 'ANGLEGRAD_',
             'TIMEMS_', 'TIMES_', 'FREQHZ_', 'FREQKHZ_', 'PERCENTAGE_',
-            'NUMBER_', 'STRING_'
+            'NUMBER_', 'STRING_', 'HASH_'
           ]
 __all__.extend([ fn for fn in globals().keys() if fn.startswith('tss_') ])
 
@@ -23,8 +25,10 @@ operations = {
     '*' : lambda a, b : a * b,
     '/' : lambda a, b : a / b,
 }
-
 class StackMachine( object ) :
+    re_dimen = re.compile(
+        r'[0-9\.]+(em|ex|px|cm|mm|in|pt|pc|dec|rad|grad|ms|s|Hz|kHz|%)'
+    )
     def __init__( self, ifile, compiler, tssconfig={} ):
         self.compiler, self.tssconfig  = compiler, tssconfig
         self.encoding = compiler.encoding
@@ -34,6 +38,22 @@ class StackMachine( object ) :
         self.bufstack = [ [] ]
         self.ifile = ifile
         self.cssindent = u''
+
+    def _makeobj( self, val ):
+        if isinstance(val, int) :
+            return NUMBER_( val )
+        elif isinstance(val, basestring) :
+            x = self.re_dimen.findall( val )
+            if x :
+                return dimensions[ x[0] ](val)
+            elif val[0] == '#' :
+                return HASH_(val)
+            elif (val[0] == val[-1]) and val[0] in '\'"' :
+                return STRING_(val)
+            else :
+                return STRING_(val, wrap="'")
+        else :
+            raise Exception('Unknown object %r' % val )
 
     #---- Stack machine instructions
  
@@ -72,14 +92,20 @@ class StackMachine( object ) :
     def popbuf( self ) :
         return self.bufstack.pop(-1)
 
-    def popbuftext( self ) :
+    def popbuftext( self ):
         buf = self.popbuf()
-        rc = u''
-        for x in buf :
-            rc += x if isinstance(x, basestring) else unicode(x)
+        rc = u''.join( 
+            ( x if isinstance(x, unicode) else str(x).decode(self.encoding) )
+            for x in buf
+        )
         return rc
 
-    def evalexprs( self, val, filters ) :
+    def pushobj( self, val ):
+        if not isinstance(val, (NUMBER_,STRING_,HASH_,DIMENSION_)) :
+            val = self._makeobj( val )
+        self.append( val )
+
+    def evalexprs( self, val, filters ):
         text = val if isinstance(val, unicode) else str(val).decode(self.encoding)
         for filt, params in self.def_escfilters :   # default filters
             fn = self.escfilters.get( filt, None )
@@ -251,13 +277,78 @@ class PERCENTAGE_( DIMENSION_ ):
         t = self.val[:-1]
         return float(t) if '.' in t else int(t)
 
+class HASH_( object ):
+    suffix = ''
+    def __init__( self, value ):
+        self.val = value
+
+    def __str__( self ):
+        return self.val
+
+    def torgb( self ):
+        x = self.val
+        if len(x) == 4 :
+            r,g,b = int(x[1], 16), int(x[2], 16), int(x[3], 16)
+        elif len(self.val) == 7 :
+            r,g,b = int(x[1:3], 16), int(x[3:5], 16), int(x[5:], 16)
+        else :
+            raise Exception('Color value encoding in unknown format')
+        return r,g,b
+
+    def tohash( self, r, g, b ):
+        return '#%02x%02x%02x' % (r,g,b)
+
+    def __add__( self, y ):
+        r,g,b = self.torgb()
+        if isinstance(y, NUMBER_) :
+            x = y.value()
+            r1,g1,b1 = x,x,x
+        elif isinstance(y, HASH_) :
+            r1,g1,b1 = y.torgb()
+        else :
+            raise Exception( 'Addition not allowed on %r' % y )
+        return self.__class__( self.tohash(r+r1, g+g1, b+b1) )
+
+    def __sub__( self, y ):
+        r,g,b = self.torgb()
+        if isinstance(y, NUMBER_) :
+            x = y.value()
+            r1,g1,b1 = x,x,x
+        elif isinstance(y, HASH_) :
+            r1,g1,b1 = y.torgb()
+        else :
+            raise Exception( 'Subraction not allowed on %r' % y )
+        return self.__class__( self.tohash(r-r1, g-g1, b-b1) )
+
+    def __mul__( self, y ):
+        r,g,b = self.torgb()
+        if isinstance(y, NUMBER_) :
+            x = y.value()
+            r1,g1,b1 = x,x,x
+        elif isinstance(y, HASH_) :
+            r1,g1,b1 = y.torgb()
+        else :
+            raise Exception( 'Multiplication not allowed on %r' % y )
+        return self.__class__( self.tohash(r*r1, g*g1, b*b1) )
+
+    def __div__( self, y ):
+        r,g,b = self.torgb()
+        if isinstance(y, NUMBER_) :
+            x = y.value()
+            r1,g1,b1 = x,x,x
+        elif isinstance(y, HASH_) :
+            r1,g1,b1 = y.torgb()
+        else :
+            raise Exception( 'Division not allowed on %r' % y )
+        return self.__class__( self.tohash(r/r1, g/g1, b/b1) )
+
 class NUMBER_( object ):
     suffix = ''
     def __init__( self, value ):
         self.val = value
 
     def __str__( self ):
-        return str(self.val)
+        return self.val
 
     def value( self ):
         t = self.val
@@ -290,7 +381,10 @@ class NUMBER_( object ):
 class STRING_( object ):
     suffix = u''
     def __init__( self, value, wrap=None ):
-        self.val = (wrap + value + wrap) if wrap else value
+        if wrap :
+            self.val = wrap + value.replace(wrap, "\\%s"%wrap) + wrap
+        else :
+            self.val = value
         self.wrap = self.val[0]
 
     def __str__( self ):
@@ -310,4 +404,14 @@ class STRING_( object ):
 
     def __div__( self, y ):
         return self.__class__( self.value()/y.value(), self.wrap )
+
+dimensions = {
+    'em' : EMS_, 'ex' : EXS_,
+    'px' : LENGTHPX_, 'cm' : LENGTHCM_, 'mm' : LENGTHMM_, 'in' : LENGTHIN_,
+    'pt' : LENGTHPT_, 'pc' : LENGTHPC_,
+    'deg': ANGLEDEG_, 'rad': ANGLERAD_,  'grad': ANGLEGRAD_,
+    'ms' : TIMEMS_,   's'  : TIMES_, 
+    'Hz' : FREQHZ_,   'kHz': FREQKHZ_, 
+    '%'  : PERCENTAGE_,
+}
 

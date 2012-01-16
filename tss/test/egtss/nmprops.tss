@@ -1,5 +1,5 @@
 .funky {
-  font; {
+  font: {
     family: fantasy;
     size: 30em;
     weight: bold;

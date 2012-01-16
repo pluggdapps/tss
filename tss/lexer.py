@@ -57,17 +57,22 @@ class TSSLexer( object ) :
     def _make_tok_location( self, token ):
         return ( token.lineno, self._find_tok_column(token) )
 
+    def _checkstmt( self, token ):
+        val = token.value
+        if val.endswith('\n') or val.endswith('\r\n') :
+            n, data = self.lexer.lexpos, token.lexer.lexdata
+            l = len(data)
+            while (n<l) and (data[n] in ' \t') : n += 1
+            token.lexer.push_state('statement') if (n<l) and (data[n]=='$') else None
+
     def _incrlineno( self, token ) :
-        newlines = len( token.value.split(u'\n') ) - 1
-        if newlines > 0 : token.lexer.lineno += newlines
+        newlines = token.value.count(u'\n')
+        if newlines > 0 :
+            token.lexer.lineno += newlines
+        self._checkstmt( token )
     
     def _preprocess( self, text ):
         return text
-
-    def _lookahead( self, t, chars ):
-        for i in self.lexer.lexdata[t.lexpos:] :
-            if i in chars : return i
-        return None
 
     def _lexanalysis( self, t ):
         if self.directive_scan and self.directive_scan[-1][1] == t.type :
@@ -77,18 +82,21 @@ class TSSLexer( object ) :
         elif t.type in self.directives :
             self.directive_scan.append( (t.type, 'SEMICOLON') )
 
-    def _inselector( self, t ):
-        if self.directive_scan and directive_scan[-1][0] == 'EXTEND_SYM' :
+    def _inselector( self, t ) :
+        data, pos = self.lexer.lexdata, self.lexer.lexpos
+        if self.directive_scan and self.directive_scan[-1][0] == 'EXTEND_SYM' :
             return True
-        elif self.directive_scan == [] and self._lookahead(t, '{;}') == '{' :
-            return True
+        elif self.directive_scan == [] :
+            m = re.search( r';|([^\$]\{)|^\{|\}', data[pos:] )
+            return True if m and m.group()[0] not in ';}' else False
         else :
             return False
 
     def _inproperty( self, t ):
-        if self.directive_scan == [] and self._lookahead(t, '{;}') in ';}' :
-            if self._lookahead(t, ':;') == ':' :
-                return True
+        data, pos = self.lexer.lexdata, self.lexer.lexpos
+        if self.directive_scan == [] :
+            m = re.search( r'[^{}]+:', data[pos:] )
+            return True if m else False
         else :
             return False
 
@@ -136,6 +144,7 @@ class TSSLexer( object ) :
     # States
     states = (
                ( 'cdata', 'exclusive' ),
+               ( 'statement', 'exclusive' ),
                ( 'cssblock', 'exclusive' ),
              )
 
@@ -210,9 +219,9 @@ class TSSLexer( object ) :
     range_   = r'\?{1,6}|[0-9a-f](\?{0,5}|[0-9a-f](\?{0,4}|' + \
                   r'[0-9a-f](\?{0,3}|[0-9a-f](\?{0,2}|[0-9a-f](\??|[0-9a-f])))))'
 
-    pagemr   = r'@(page|top-left-corner|top-left|top-center|top-right' + \
-                 '|top-right-corner|bottom-left-corner|bottom-left' + \
-                 '|bottom-center|bottom-right|bottom-right-corner|left-top' + \
+    pagemr   = r'@(page|top-left-corner|top-left|top-center|top-right-corner' + \
+                 '|top-right|bottom-left-corner|bottom-left|bottom-center' + \
+                 '|bottom-right-corner|bottom-right|left-top' + \
                  '|left-middle|right-bottom|right-top|right-middle' + \
                  '|right-bottom)' + wspac
 
@@ -468,23 +477,30 @@ class TSSLexer( object ) :
     @TOKEN( r'\$\{[^}]*\}' + wspac )
     def t_EXTN_EXPR( self, t ) :
         obraces = t.value.count('{') > 1
-        lexdata = self.lexer.lexdata
+        lexdata, lexpos = self.lexer.lexdata, self.lexer.lexpos
         txtlen = len(lexdata)
         if obraces > 1 :
-            while (t.lexpos < txtlen) and obraces :
-                if lexdata[t.lexpos] == '{' : obraces += 1
-                elif lexdata[t.lexpos] == '}' : obraces -= 1
-                t.value += lexdata[t.lexpos]
-                t.lexpos += 1
+            while (lexpos < txtlen) and obraces :
+                if lexdata[lexpos] == '{' : obraces += 1
+                elif lexdata[lexpos] == '}' : obraces -= 1
+                t.value += lexdata[lexpos]
+                lexpos += 1
+            self.lexer.lexpos = lexpos
         self._incrlineno( t )
         return t
 
-    @TOKEN( r'\$[^\r\n]+;' + wspac )
+    @TOKEN( r'^[ \t]*\$[^\r\n\f]+;' + wspac )
     def t_EXTN_STATEMENT( self, t ) :
         self._incrlineno( t )
         return t
 
-    @TOKEN( r'\$[a-zA-Z][a-zA-Z0-9_]+' + wspac )
+    @TOKEN( r'[ \t]*\$[^\r\n\f]+;' + wspac )
+    def t_statement_EXTN_STATEMENT( self, t ) :
+        self._incrlineno( t )
+        t.lexer.pop_state()
+        return t
+
+    @TOKEN( r'\$[a-zA-Z][a-zA-Z0-9_]*' + wspac )
     def t_EXTN_VAR( self, t ) :
         if self._inselector(t) : t.type = 'SEL_EXTN_VAR'
         return t
@@ -603,14 +619,14 @@ class TSSLexer( object ) :
     def t_CLOSEBRACE( self, t ):
         return t
 
-    def t_cdata_CDATATEXT( self, t ):           # <--- `cdata` state
-        r'(.|[\r\n\f])+(?=-->)'
-        self._incrlineno( t )
+    @TOKEN( r'-->' + wspac )
+    def t_cdata_CDC( self, t ) :
+        t.lexer.pop_state()
         return t
 
-    def t_cdata_CDC( self, t ) :
-        r'-->'
-        t.lexer.pop_state()
+    def t_cdata_CDATATEXT( self, t ):           # <--- `cdata` state
+        r'(.|[\r\n\f])+?(?=-->)'
+        self._incrlineno( t )
         return t
 
     def t_cssblock_FUNCTIONSTART( self, t ):
@@ -680,6 +696,10 @@ class TSSLexer( object ) :
         self._error(msg, t)
 
     def t_cssblock_error( self, t ):
+        msg = 'Illegal character %s' % repr(t.value[0])
+        self._error(msg, t)
+
+    def t_statement_error( self, t ):
         msg = 'Illegal character %s' % repr(t.value[0])
         self._error(msg, t)
 

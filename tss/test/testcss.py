@@ -22,15 +22,18 @@ def test_dump( tu, reftext ):
         return True
 
 def test_translate( tssloc, options ):
-    tss_cmdline( tssloc )
+    kwargs = {}
+    kwargs.update( plaincss=options.plaincss )
+    tss_cmdline( tssloc, **kwargs )
     tsstext = codecs.open(tssloc, encoding='utf-8-sig',).read()
     cssfile = tssloc[:-4]+'.css'
     csstext = codecs.open(cssfile, encoding='utf-8-sig').read()
-    if options.rmonsuccess :
+    rc = csstext == tsstext
+    if options.rmonsuccess and rc :
         os.remove(tssloc)
         os.remove(tssloc+'.py')
         os.remove(cssfile)
-    return csstext == tsstext
+    return rc
 
 def test_execute( f, options ) :
     print "Testing %r ...\n" % f,
@@ -48,8 +51,9 @@ def test_execute( f, options ) :
         elif test_translate( f, options ) == False :
             print '(translate failed)'
             rc = 'failure'
-        print '(sucess)'
-        rc = 'success'
+        else :
+            print '(success)'
+            rc = 'success'
     if rc == 'failure' : sys.exit(1)
     return rc
 
@@ -77,6 +81,8 @@ def _option_parse() :
     parser = OptionParser(usage="usage: %prog [options] filename")
     parser.add_option( '-d', dest='directory',
                        help='run test on directory' )
+    parser.add_option( '-c', action='store_true', dest='plaincss',
+                       help='Interpret input text as plain css' )
     parser.add_option( '-r', action='store_true', dest='rmonsuccess',
                        help='remove on success' )
     parser.add_option( '-g', dest='debug', default='0',

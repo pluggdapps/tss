@@ -47,10 +47,7 @@ from   tss.utils        import charset, throw
 class ASTError( Exception ):
     pass
 
-
-class Context( object ):
-    def __init__( self, htmlindent=u'' ):
-        self.htmlindent = htmlindent
+class Context( object ): pass
 
 
 # ------------------- AST Nodes (Terminal and Non-Terminal) -------------------
@@ -89,12 +86,15 @@ class Node( object ):
     def importast( self, igen, table ):
         """Process @import directive and Compile importable .tss files and 
         pull relevant AST from them."""
+        [ x.importast( igen, table ) for x in self.safedesc() ]
 
     def nestedrulesets( self, igen, table ):
         """Unwind nested rulesets."""
+        [ x.nestedrulesets( igen, table ) for x in self.safedesc() ]
 
     def extendrule( self, igen, table ):
         """Process @extend directive."""
+        [ x.extendrule( igen, table ) for x in self.safedesc() ]
 
     def headpass1( self, igen, table ):
         """Pre-processing phase 1, useful to implement multi-pass compilers"""
@@ -369,7 +369,7 @@ class NonTerminal( Node ):      # Non-terminal
         rechild = getattr( self, lrchild )
         setattr( self, lrchild, node )
         node.parent = self
-        node.tailinsert( rechild, lrchild )
+        rechild and node.tailinsert( rechild, lrchild )
 
     def collect( self, lrchild, childattr ):
         """Collect all children as a list of tuple from left-recursive tree."""
@@ -400,10 +400,12 @@ class Tss( NonTerminal ):
         # Initialization
         self.blocks = []    # List of all styling blocks { ... }
         self.table = {
-            'nestedrules' : { 'insels' : [] },
-            'signature' : u'',
-            'expreval' : False.
+            'nestedrules' : { 'insels' : [] },  # book-keeping for nested rules
+            'expreval'    : False,      # whether to evaluate `exprs` grammar
+            'extendrules' : [],         # book-keeping for @extend directive
+            'rsetsuffix'  : 1,          # function suffix for `ruleset`
         }
+        self.scopedruleset = []
 
     def _hascontent( self ) :
         """Check whether the main of the template page contains valid content,
@@ -417,16 +419,18 @@ class Tss( NonTerminal ):
         igen.cr()
         if self._hascontent() :
             # main function signature
-            signature = table['signature'].strip(', \t')
-            u', '.join([ signature, u'*args', u'**kwargs' ])
-            igen.putstatement( u"def main( %s ) :" % signature )
+            igen.putstatement( u"def main( *args, **kwargs ) :" )
             igen.codeindent( up=u'  ' )
-
             # Main function's children
             igen.pushbuf()
-            [ x.generate(igen, table) for x in self.safedesc() ]
-            igen.flushtext()
-
+            node, ts = self, []
+            while node :
+                ts.append(( node.nonterm, node ))
+                node = node.tss
+            ts.reverse()
+            for nonterm, tss in ts :
+                nonterm.generate( igen, table )
+                [ igen.callruleset( r.rulesetfn ) for r in tss.scopedruleset ]
             # finish main function
             igen.popreturn( astext=True )
             igen.codeindent( down='  ' )
@@ -437,11 +441,12 @@ class Tss( NonTerminal ):
         return self._nonterms
 
     def validate( self, table={} ):
-        rc = all([ x.validate(table) for x in self.safedesc() ])
-        if rc == False : raise Exception('Validation failed')
+        assert all([ x.validate(table) for x in self.safedesc() ]), 'Validation failed'
         return True
 
     def asttransorms( self, igen, table ):
+        """AST transformations to be applied before making compilation 
+        passes."""
         NonTerminal.importast( self, igen, table )
         NonTerminal.nestedrulesets( self, igen, table )
         NonTerminal.extendrule( self, igen, table )
@@ -451,17 +456,21 @@ class Tss( NonTerminal ):
         NonTerminal.headpass2( self, igen, table )
 
     def generate( self, igen, table={} ):
-        table_ = deepcopy( table )
+        # Book-keeping
+        table_ = deepcopy( self.table )
         table_.update( table )
+        # AST transformations
         self.asttransorms( igen, table_ )
+        # Compilation pass
         self.headpass1( igen, table_ )
         self.headpass2( igen, table_ )
-        self._main( igen, table_ )
+        self._main( igen, table_ )      # generate()
         self.tailpass( igen, table_ )
 
     def tailpass( self, igen, table={} ):
         igen.cr()
         [ x.tailpass( igen, table ) for x in self.safedesc() ]
+        # Finish compilation
         igen.comment( u"---- Footer", force=True )
         igen.footer( table['tsshash'], table['tssfile'] )
         igen.finish()
@@ -522,8 +531,8 @@ class Charset( NonTerminal ):
         return self.CHARSET_SYM, self.string, self.SEMICOLON
 
     def headpass2( self, igen, table ):
-        igen.encoding = charset(
-            parseline=self.dump(table), encoding=self.parser.tssparser.encoding )
+        text = self.dump(table)
+        igen.encoding = charset( parseline=text, encoding=igen.encoding )
         igen.comment( u"-*- coding: %s -*-" % igen.encoding, force=True )
         igen.putstatement( u"_m.setencoding( %r )" % igen.encoding )
         NonTerminal.headpass2( self, igen, table )
@@ -592,6 +601,53 @@ class FontFace( NonTerminal ) :
         [ x.show(buf, offset+2, attrnames, showcoord) for x in self.safedesc() ]
 
 
+#---- @generic-atrule
+
+class AtRule( NonTerminal ) :
+    """class to handle `atrule` grammar."""
+
+    rhs = ('ATKEYWORD', 'expr', 'block', 'SEMICOLON', 'ruleblock')
+
+    def __init__( self, parser, sym, expr, block, semi, ruleblock ) :
+        NonTerminal.__init__(self, parser, sym, expr, block, semi, ruleblock)
+        self._terms = self.ATKEYWORD, self.SEMICOLON = sym, semi
+        self._terms = filter( None, self._terms )
+        # Expand ruleblock.
+        ruleblock = ruleblock or (None, None, None)
+        self.openbrace, self.rulesets, self.closebrace = ruleblock
+        # Non terminals
+        self.expr, self.block, self.ruleblock = expr, block, ruleblock
+        self._nonterms = \
+          self.expr, self.block, self.openbrace, self.rulesets, self.closebrace
+        self._nonterms = filter( None, self._nonterms )
+        # Set parent attribute for children, should be last statement !!
+        self.setparent( self, self.children() )
+        self.scopedruleset = []
+
+    def children( self ):
+        x = ( self.ATKEYWORD, self.expr, self.block, self.SEMICOLON,
+              self.openbrace, self.rulesets, self.closebrace )
+        return filter( None, x )
+
+    def generate( self, igen, table ):
+        self.ATKEYWORD and self.ATKEYWORD.generate( igen, table )
+        self.expr and self.expr.generate( igen, table )
+        self.block and self.block.generate( igen, table )
+        self.SEMICOLON and self.SEMICOLON.generate( igen, table )
+        self.openbrace and self.openbrace.generate( igen, table )
+        self.rulesets and self.rulesets.generate( igen , table )
+        [ igen.callruleset( r.rulesetfn ) for r in self.scopedruleset ]
+        self.closebrace and self.closebrace.generate( igen, table )
+
+    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
+        lead = ' ' * offset
+        buf.write( lead + 'atrule: ' )
+        if showcoord:
+            buf.write( ' (at %s)' % self.coord )
+        buf.write('\n')
+        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.safedesc() ]
+
+
 #---- @media
 
 class Media( NonTerminal ):
@@ -610,6 +666,7 @@ class Media( NonTerminal ):
         self._nonterms = filter( None, self._nonterms )
         # Set parent attribute for children, should be last statement !!
         self.setparent( self, self.children() )
+        self.scopedruleset = []
 
     def children( self ) :
         x = ( self.MEDIA_SYM, self.mediums, self.exprs,
@@ -620,6 +677,15 @@ class Media( NonTerminal ):
         if filter( None, [ x.matchdown((Media,)) for x in self.safedesc() ]) :
             raise Exception('`@media` rule cannot be nested')
         return all([ x.validate(table) for x in self.safedesc() ])
+
+    def generate( self, igen, table ):
+        self.MEDIA_SYM and self.MEDIA_SYM.generate( igen, table )
+        self.mediums and self.mediums.generate( igen, table )
+        self.exprs and self.exprs.generate( igen, table )
+        self.openbrace and self.openbrace.generate( igen, table )
+        self.rulesets and self.rulesets.generate( igen , table )
+        [ igen.callruleset( r.rulesetfn ) for r in self.scopedruleset ]
+        self.closebrace and self.closebrace.generate( igen, table )
 
     def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
@@ -633,12 +699,12 @@ class Media( NonTerminal ):
 class Mediums( NonTerminal ):
     """class to handle `mediums` grammar."""
 
-    flattenrule = ('mediums', ('S', 'medium', 'COMMA'))
-    rhs = ('mediums', 'COMMA', 'medium', 'S')
+    flattenrule = ('mediums', ('medium', 'COMMA'))
+    rhs = ('mediums', 'COMMA', 'medium')
 
-    def __init__( self, parser, mediums, comma, medium, s ) :
-        NonTerminal.__init__( self, parser, mediums, comma, medium, s )
-        self._terms = self.S, self.COMMA = s, comma
+    def __init__( self, parser, mediums, comma, medium ) :
+        NonTerminal.__init__( self, parser, mediums, comma, medium )
+        self._terms = (self.COMMA,) = (comma,)
         self._terms = filter( None, self._terms )
         self._nonterms = self.mediums, self.medium = mediums, medium
         self._nonterms = filter( None, self._nonterms )
@@ -646,7 +712,7 @@ class Mediums( NonTerminal ):
         self.setparent( self, self.children() )
 
     def children( self ):
-        return filter( None, (self.mediums, self.COMMA, self.medium, self.S) )
+        return filter( None, (self.mediums, self.COMMA, self.medium) )
 
     def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         if showcoord:
@@ -713,42 +779,6 @@ class PageMargin( NonTerminal ):
         [ x.show(buf, offset+2, attrnames, showcoord) for x in self.safedesc() ]
 
 
-#---- @generic-atrule
-
-class AtRule( NonTerminal ) :
-    """class to handle `atrule` grammar."""
-
-    rhs = ('ATKEYWORD', 'expr', 'block', 'SEMICOLON', 'ruleblock')
-
-    def __init__( self, parser, sym, expr, block, semi, ruleblock ) :
-        NonTerminal.__init__(self, parser, sym, expr, block, semi, ruleblock)
-        self._terms = self.ATKEYWORD, self.SEMICOLON = sym, semi
-        self._terms = filter( None, self._terms )
-        # Expand ruleblock.
-        ruleblock = ruleblock or (None, None, None)
-        self.openbrace, self.rulesets, self.closebrace = ruleblock
-        # Non terminals
-        self.expr, self.block, self.ruleblock = expr, block, ruleblock
-        self._nonterms = \
-            self.expr, self.block, self.openbrace,self.rulesets,self.closebrace
-        self._nonterms = filter( None, self._nonterms )
-        # Set parent attribute for children, should be last statement !!
-        self.setparent( self, self.children() )
-
-    def children( self ):
-        x = ( self.ATKEYWORD, self.expr, self.block, self.SEMICOLON,
-              self.openbrace, self.rulesets, self.closebrace )
-        return filter( None, x )
-
-    def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
-        lead = ' ' * offset
-        buf.write( lead + 'atrule: ' )
-        if showcoord:
-            buf.write( ' (at %s)' % self.coord )
-        buf.write('\n')
-        [ x.show(buf, offset+2, attrnames, showcoord) for x in self.safedesc() ]
-
-
 #---- @Import
 
 class Import( NonTerminal ) :
@@ -770,13 +800,13 @@ class Import( NonTerminal ) :
 
     def _nodirectives( self, tu ):
         # No charset or namespace directives allowed
-        x = tu.matchdown( (Charset, Namespace) )
+        x = tu.matchdown( (Charset, Namespace, Atrule) )
         if x :
             err = '%s directives not allowed in imported tss file' % x
             raise Exception( err )
 
     def _pull_directives( self, tu ):
-        ds = map( lambda x : x[1], tu.matchdown((FontFace,Media,Page,Atrule)) )
+        ds = map( lambda x : x[1], tu.matchdown((FontFace,Page,Media)) )
         _, ss = self.matchup( (Tss,) )[0]
         ds.reverse()
         [(d.parent.delete('tss'), ss.insertafter(d.parent, 'tss')) for d in ds]
@@ -795,8 +825,8 @@ class Import( NonTerminal ) :
         self._pull_rulesets( tu )
 
     def _importtss( self, text ):
-        """Strings begining with http:// or url( will not be imported
-        Strings ending with .css will not be imported."""
+        # Strings begining with http:// or url( will not be imported
+        # Strings ending with .css will not be imported.
         text = text.strip('"\' \t')
         x = text.startswith('http://') or text.startswith('url(')
         return '' if x or self.mediums or text.endswith('.css') else text
@@ -813,7 +843,7 @@ class Import( NonTerminal ) :
         tssloc = self._importtss( self.nonterm.dump( table ))
         if tssloc :
             comp = Compiler( tssloc=tssloc, tssconfig=tssconfig )
-            tu = comp.toast() 
+            tu = comp.toast()
             self._mergeast( tu )
             self.IMPORT_SYM, self.nonterms, self.mediums, self.SEMICOLON = \
                 None, None, None, None
@@ -832,20 +862,27 @@ class Import( NonTerminal ) :
 class Extend( NonTerminal ) :
     """class to handle `extend` grammar."""
 
-    rhs = ('EXTEND_SYM', 'selectors', 'SEMICOLON', 'wc')
+    rhs = ('EXTEND_SYM', 'selector', 'SEMICOLON', 'wc')
 
-    def __init__( self, parser, sym, selectors, semi, wc ) :
-        NonTerminal.__init__( self, parser, sym, selectors, semi, wc )
+    def __init__( self, parser, sym, selector, semi, wc ) :
+        NonTerminal.__init__( self, parser, sym, selector, semi, wc )
         self._terms = self.EXTEND_SYM, self.SEMICOLON = sym, semi
         self._terms = filter( None, self._terms )
-        self._nonterms = self.selectors, self.wc = selectors, wc
+        self._nonterms = self.selector, self.wc = selector, wc
         self._nonterms = filter( None, self._nonterms )
         # Set parent attribute for children, should be last statement !!
         self.setparent( self, self.children() )
 
     def children( self ):
-        x = self.EXTEND_SYM, self.selectors, self.SEMICOLON, self.wc
+        x = self.EXTEND_SYM, self.selector, self.SEMICOLON, self.wc
         return filter( None, x )
+
+    def extendrule( self, igen, table ):
+        r = matchup((Ruleset,))[0][1]
+        table['extendrules'].append( (self.selector, r.selectors) )
+
+    def generate( self, igen, table={} ):
+        pass
 
     def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False) :
         lead = ' ' * offset
@@ -871,10 +908,6 @@ class Rulesets( NonTerminal ):
         # Set parent attribute for children, should be last statement !!
         self.setparent( self, self.children() )
 
-    def nestedrulesets( self, igen, table ):
-        contr = self.matchup((Ruleset,))
-        contr and contr[0][1].rulesets.append( self )
-
     def children( self ):
         return self._nonterms
 
@@ -887,20 +920,22 @@ class Rulesets( NonTerminal ):
 class Ruleset( NonTerminal ):
     """class to handle `ruleset` grammar."""
 
-    rhs = ('selectors', 'block')
+    rhs = ('selectors', 'block', 'nonterm')
 
-    def __init__( self, parser, selectors, block ) :
-        NonTerminal.__init__( self, selectors, block )
-        self._nonterms = self.selectors, self.block = selectors, block
+    def __init__( self, parser, selectors, block, nonterm ) :
+        NonTerminal.__init__( self, selectors, block, nonterm )
+        self._nonterms = self.selectors, self.block, self.nonterm = \
+                selectors, block, nonterm
         self._nonterms = filter( None, self._nonterms )
         # Set parent attribute for children, should be last statement !!
         self.setparent( self, self.children() )
-        self.rulesets = []
+        self.scopedruleset = []
+        self.rulesetfn = ''
 
     def children( self ):
-        return filter( None, (self.selectors, self.block) )
+        return filter( None, (self.selectors, self.block, self.nonterm) )
 
-    def nestedrulesets( self, igen, table ):
+    def _nestedrulesets( self, igen, table ):
         nestedtbl = table['nestedrules']
         # Merge nested selectors for `this` ruleset
         insels = nestedtbl['insels']
@@ -916,7 +951,7 @@ class Ruleset( NonTerminal ):
                 selectors = clone()
                 nestedtbl['insels'] = nestedtbl['insels'].selectors
                 comma = COMMA(self.parser, ',\n')
-        elif self.insels :
+        elif insels :
             self.selectors = insels()
 
         # Call `this` ruleset's children in the context of its selectors
@@ -925,6 +960,39 @@ class Ruleset( NonTerminal ):
             nestedtbl['insels'].parent = None
         self.block.nestedrulesets( igen, table )
         nestedtbl['insels'] = insels
+
+    def nestedrulesets( self, igen, table ):
+        # compile ruleset into callable function nested in parent ruleset's
+        # scope
+        self.rulesetfn = u'ruleset' + str(table['rsetsuffix'])
+        table['rsetsuffix'] += 1
+
+        if self.nonterm :
+            self.nonterm.nestedrulesets( igen, table )
+        else :
+            self._nestedrulesets( igen, table )
+
+        # Remember to call from parent ruleset
+        x = self.parent.matchup((Ruleset,))
+        x = x or self.matchup((Tss,Media,AtRule))
+        x[0][1].scopedruleset.append( self )
+
+
+    def extendrule( self, igen, table ):
+        if self.selectors or self.block :
+            table['extendedselectors'] = None
+            self.selectors.extendrule( igen, table )
+            table.pop('extendedselectors')
+            self.block.extendrule( igen, table )
+
+    def generate( self, igen, table ):
+        igen.putstatement( u'def %s() :' % self.rulesetfn )
+        igen.codeindent( up=u'  ' )
+        igen.pushbuf()
+        NonTerminal.generate( self, igen, table )
+        [ igen.callruleset( r.rulesetfn ) for r in self.scopedruleset ]
+        igen.popreturn()
+        igen.codeindent( down=u'  ' )
 
     def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
@@ -953,6 +1021,24 @@ class Selectors( NonTerminal ):
     def children( self ):
         return filter( None,  (self.selectors, self.COMMA, self.selector) )
 
+    def extendrule( self, igen, table ):
+        if self.selector :
+            selectors = None
+            for esel, withsels in table['extendrules'] :
+                for cls, isel in withsels.matchdown((Selector,)) :
+                    com = COMMA( self.parser, ',\n' )
+                    sel = Selector(self.parser, self.selector(), None, None)
+                    x = sel.extendrule( igen, table, esel, esel, isel )
+                    if x != 'done' : continue
+                    selectors = Selectors(
+                                    self.parser, selectors, com, sel.selector)
+            if table['extendedselectors'] and selectors :
+                table['extendedselectors'].tailinsert( selectors, 'selectors' )
+            elif selectors :
+                table['extendedselectors'] = selectors
+
+        self.selectors and self.selectors.extendrule( igen, table )
+
     def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
@@ -973,35 +1059,6 @@ class Selector( NonTerminal ):
         # Set parent attribute for children, should be last statement !!
         self.setparent( self, self.children() )
 
-    def cdi( self, compsel, origsel, inssel, fromsel ):
-        """Compare, Delete and Insert for @extend-ed selectors."""
-        if (self.simple_selector, self.COMBINATOR) == (None, None) :
-            # Passive fall through
-            return self.selector.cdi( compsel, origsel, inssel, fromsel ) \
-                   if self.selector else False
-        ok = False
-        if self.simple_selector :
-            ok = self.simple_selector.compare( sel.simple_selector ) == True
-        if self.COMBINATOR :
-            ok = ok and (self.COMBINATOR.compare( sel.COMBINATOR ) == True)
-
-        if ok and self.selector and csel.selector :     # Continue matching
-            ok = self.selector.cdi( csel.selector, orisel, inssel, fromsel )
-        elif ok and csel.selector == None :             # Full match
-            if csel == osel :
-                self.COMBINATOR, self.simple_selector = isel.COMBINATOR, isel.simple_selector
-                self.setparent( self, self.children() )
-                self.insertsubtree( isel.selector )
-            else :
-                self.delete('selector')
-            ok = True
-        elif self.selector :                            # Restart matching
-            fromsel = self
-            ok = self.selector.cdi( origsel, origsel, inssel, fromsel )
-        else :                                          # Fail match
-            ok = False
-        return ok
-
     def children( self ):
         x = (self.selector, self.COMBINATOR, self.simple_selector)
         return filter( None, x )
@@ -1017,7 +1074,32 @@ class Selector( NonTerminal ):
             self.selector.nestedrulesets( igen, table )
         else :                                          # Tail insert
             self.tailinsert( insel, 'selector' )
-            self.COMBINATOR = COMBINATOR(self.parser, ' ')
+            self.COMBINATOR = S(self.parser, u' ')
+
+    def extendrule( self, igen, table, csel, esel, isel ):
+        """extend selectors using @extend."""
+        ok = False
+        if self.simple_selector :
+            ok = self.simple_selector.compare( sel.simple_selector ) == True
+        if self.COMBINATOR :
+            ok = ok and (self.COMBINATOR.compare( sel.COMBINATOR ) == True)
+
+        if ok and self.selector and csel.selector :  # Continue matching
+            self.selector.extendrule( igen, table, csel.selector, esel, isel )
+            self.delete('selector')
+            ok = self
+        elif ok and csel.selector == None :          # Full match
+            self.delete('selector')
+            ok = self
+        elif self.selector :                            # Restart matching
+            ok = self.selector.extendrule( igen, table, esel, esel, isel )
+        else :                                          # Fail match
+            ok = False
+
+        if isinstance(ok, Selector) and ok != self :
+            self.insertafter( isel, 'selector' )
+            ok = 'done'
+        return ok
 
     def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
@@ -1282,20 +1364,22 @@ class Exprs( NonTerminal ):
     flattenrule = ('exprs', ('expr', 'COMMA'))
     rhs = ('exprs', 'COMMA', 'expr')
 
-    def __init__( self, parser, exprs, comma, expr ):
+    def __init__( self, parser, exprs, comma, expr, s=None ):
         NonTerminal.__init__( self, parser, exprs, comma, expr )
-        self._terms = (self.COMMA,) = (comma,)
+        self._terms = (self.COMMA,self.S) = (comma,s)
+        self._terms = filter( None, self._terms )
         self._nonterms = self.exprs, self.expr = exprs, expr
         self._nonterms = filter( None, self._nonterms )
         # Set parent attribute for children, should be last statement !!
         self.setparent( self, self.children() )
 
     def children( self ):
-        return filter( None, (self.exprs, self.COMMA, self.expr) )
+        return filter( None, (self.exprs, self.COMMA, self.S, self.expr) )
 
     def generate( self, igen, table ):
         self.exprs and self.exprs.generate( igen, table )
         self.COMMA and self.COMMA.generate( igen, table )
+        self.S and self.S.generate( igen, table )
         self.expr and self.expr.generate( igen, table )
 
     def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
@@ -1333,7 +1417,7 @@ class Expr( NonTerminal ):
     # <Checks of expression begins here>
 
     def is_macroexpr( self ):
-        return isinstance( self.spec, (ExprParan, ExprTernary) )
+        return isinstance( self.spec, (ExprParan,) )
 
     # </Checks of expression ends here>
 
@@ -1459,6 +1543,13 @@ class String( TerminalS ):
         else :
             TerminalS.generate( self, igen, table )
 
+class Hash( TerminalS ):
+    def generate( self, igen, table ): # Skip `wc` grammar.
+        if table['expreval'] :
+            self.TERMINAL.generate( igen, table )
+        else :
+            TerminalS.generate( self, igen, table )
+
 
 # Gotcha : This node can make an indirect recursive call to expr, hence end up
 # in deep recursion
@@ -1503,7 +1594,6 @@ class CharsetSym( TerminalS ) : pass
 class Ident( TerminalS ): pass
 class Uri( TerminalS ): pass
 class UnicodeRange( TerminalS ): pass
-class Hash( TerminalS ): pass
 
 
 class WC( NonTerminal ):
@@ -1590,6 +1680,8 @@ class ExtnExpr( NonTerminal ):
 
     @classmethod
     def parseexprs( cls, text ):
+        text = text.strip(' \t\r\n')
+        text = text[2:-1]
         try    : text, filters = text.rsplit( cls.FILTER_DELIMITER, 1 )
         except : text, filters = text, u''
         return text, filters
@@ -1613,8 +1705,7 @@ class ExtnVar( NonTerminal ):
 
     def generate( self, igen, table ):
         var = self.EXTN_VAR.dump(table)
-        igen.pushobj( var )
-        self.wc and self.wc.generate( igen, table )
+        igen.pushobj( var.strip(' \t\r\n\f')[1:] )
 
     def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
@@ -1644,7 +1735,7 @@ class ExtnStatement( NonTerminal ):
     def defaultvar( self, stmt, var=u'' ):
         stmt = stmt.rstrip(' \t;')
         if stmt.endswith( '!default' ) :
-            try : var = stmt.lstrip('$').split( '=', 1 )[0].strip()
+            try : var = stmt.lstrip('\r\n \t$').split( '=', 1 )[0].strip()
             except : var = u''
             stmt = stmt[:-8]
         stmt = stmt[1:]
@@ -1653,15 +1744,15 @@ class ExtnStatement( NonTerminal ):
     def generate( self, igen, table ):
         stmt = self.EXTN_STATEMENT.dump(table)
         stmt, var = self.defaultvar( stmt )
-        var and igen.putstatement( 'if locals().has_key( %r ) :' % var )
-        var and igen.upindent(u'  ')
+        if var :
+            igen.putstatement( 'if %r not in locals() :' % var )
+            igen.codeindent( up=u'  ' )
         igen.putstatement( stmt )
-        var and igen.downindent(u'  ')
-        self.wc and self.wc.generate( igen, table )
+        var and igen.codeindent( down=u'  ' )
 
     def show(self, buf=sys.stdout, offset=0, attrnames=False, showcoord=False):
         lead = ' ' * offset
-        buf.write( lead + 'extn_var: ' )
+        buf.write( lead + 'extn_stmt: ' )
         if showcoord:
             buf.write( ' (at %s)' % self.coord )
         buf.write('\n')
@@ -1701,7 +1792,6 @@ class FUNCTION( Terminal ) : pass
 class FUNTEXT( Terminal ) : pass
 class FUNCLOSE( Terminal ) : pass
 
-class HASH( Terminal ) : pass
 class INCLUDES( Terminal ) : pass
 class DASHMATCH( Terminal ) : pass
 class PREFIXMATCH( Terminal ) : pass
@@ -1787,12 +1877,18 @@ class NUMBER( Terminal ):
     def emit( self, igen, table ):
         return u"%s_( %r )" % (self.__class__.__name__, self.terminal)
 
+class HASH( Terminal ) :
+    def generate( self, igen, table ):
+        igen.pushobj( self.emit( igen, table ))
+
+    def emit( self, igen, table ):
+        return u"%s_( %r )" % (self.__class__.__name__, self.terminal)
+
 class STRING( Terminal ):
     def generate( self, igen, table ):
         igen.pushobj( self.emit( igen, table ))
 
     def emit( self, igen, table ):
         val = self.terminal.replace("'", "\\'")
-        return u"%s_( u'%s' )" % ( self.__class__.__name__, val )
+        return u"%s_( '%s' )" % ( self.__class__.__name__, val )
 
-class HASH( Terminal ): pass

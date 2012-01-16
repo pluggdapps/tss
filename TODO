@@ -52,3 +52,19 @@
 
 * Add 'sq', 'dq' filter to expression substitution to quote the output 
   with single-quote or double-quote
+
+* Go through http://www.w3.org/TR/css3-color/ and provide helper functions
+  for colors.
+
+* Allow nested @media directives inside rulesets.
+  Allow nested @page directives inside rulesets.
+
+* Separate comments from whitespace grammar `wc`. So that after AST
+  transformations, comment tokens are still present in meaningful places.
+
+* While replacing `&` in nested ruleset with parent selector, check for
+  trailing whitespace after `&` and similarly strip them off from parent
+  selector.
+
+* How to deal with escaped unicode points in CSS text, like,
+	a { content:"\0020 \00B7"; }

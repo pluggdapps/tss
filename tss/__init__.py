@@ -90,6 +90,12 @@ defaultconfig['memcache']                = {
     'help'    : "Cache the compiled python code in-memory to avoid "
                 "re-compiling .tss to .py file."
 }
+defaultconfig['plaincss']                = {
+    'default' : False,
+    'types'   : (bool,),
+    'help'    : "Boolean, when true directs the parser to interpret the "
+                "text as pure CSS text."
+}
 defaultconfig['text_as_hashkey']         = {
     'default' : False,
     'types'   : (bool,),
@@ -110,6 +116,7 @@ def normalizeconfig( config ):
     config['module_directory'] = config['module_directory'] or None
     config['memcache'] = asbool( config['memcache'] )
     config['text_as_hashkey'] = asbool( config['text_as_hashkey'] )
+    config['plaincss'] = asbool( config['plaincss'] )
     try    : config['directories'] = parsecsv( config['directories'] )
     except : pass
     return config

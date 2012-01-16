@@ -87,21 +87,6 @@ class InstrGen( object ) :
         self.outfd.write( prolog )
         self.cr()
 
-    def indent( self ):
-        if self.uglyhtml == False :
-            self.flushtext()
-            self.outline( u'_m.indent()' )
-
-    def upindent( self, up=u'' ):
-        if self.uglyhtml == False :
-            self.flushtext()
-            self.outline( u'_m.upindent( up=%r )' % up )
-
-    def downindent( self, down=u'' ):
-        if self.uglyhtml == False :
-            self.flushtext()
-            self.outline( u'_m.downindent( down=%r )' % down )
-
     def pushbuf( self ):
         self.flushtext()
         self.outline( u'_m.pushbuf()' )
@@ -112,7 +97,7 @@ class InstrGen( object ) :
 
     def pushobj( self, objstr ):
         self.flushtext()
-        self.outline( u'_m.append( %s )' % objstr )
+        self.outline( u'_m.pushobj( %s )' % objstr )
 
     def popappend( self, astext=True ):
         self.flushtext()
@@ -131,6 +116,10 @@ class InstrGen( object ) :
             self.outline( u'return _m.popbuftext()' )
         else :
             self.outline( u'return _m.popbuf()' )
+
+    def callruleset( self, rsfunc ):
+        self.flushtext()
+        self.outline( u'_m.append( %s() )' % rsfunc )
 
     def evalexprs( self, code, filters ):
         code = code.strip()

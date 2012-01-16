@@ -140,7 +140,7 @@ class TSSParser( object ):
         text1 = text.rstrip(' \t\r\n\f')
         term, wspac = text[:len(text1)], text[len(text1):]
         wc = WC( p.parser, None, S(p.parser, wspac), None )
-        return nontermcls( termcls(p.parser, term), wc )
+        return nontermcls( p.parser, termcls(p.parser, term), wc )
 
     # ---------- Precedence and associativity of operators --------------------
 
@@ -171,8 +171,7 @@ class TSSParser( object ):
     # does not follow rulesets, media, page, font_face non-terminals
 
     def p_tss( self, p ):
-        """tss          : cdata
-                        | charset
+        """tss          : charset
                         | namespace
                         | font_face
                         | page
@@ -180,7 +179,6 @@ class TSSParser( object ):
                         | atrule
                         | rulesets
                         | wc
-                        | tss cdata
                         | tss charset
                         | tss namespace
                         | tss font_face
@@ -190,10 +188,12 @@ class TSSParser( object ):
                         | tss rulesets
                         | tss wc"""
         if len(p) == 3 :
-            p[2] = Rulesets( p.parser, p[2], None )
+            if isinstance(p[2], Rulesets) :
+                p[2] = Rulesets( p.parser, p[2], None )
             p[0] = Tss( p.parser, p[1], p[2] )
         else :
-            p[1] = Rulesets( p.parser, p[1], None )
+            if isinstance(p[1], Rulesets) :
+                p[1] = Rulesets( p.parser, p[1], None )
             p[0] = Tss( p.parser, None, p[1] )
 
     #---- CDATA
@@ -295,38 +295,38 @@ class TSSParser( object ):
     def p_media_1( self, p ):
         """mediaspec    : MEDIA_SYM IDENT
                         | MEDIA_SYM IDENT S """
-        x = [ (IDENT, 2), (S, 3) ] if len(p)==4 else [ (IDENT, 2), None ]
-        x = [ None, None ] + x
-        meds = Mediums( p.parser, *self._buildterms(p, x) )
+        wc = (len(p)==4) and WC(p.parser, None, S(p.parser, p[3]), None) or None
+        args = [ IDENT( p.parser, p[2] ), wc ]
+        meds = Mediums( p.parser, None, None, Ident( p.parser, *args ) )
         p[0] = [ MEDIA_SYM(p.parser, p[1]), meds, None, None, None, None ]
 
     def p_media_2( self, p ):
         """mediaspec    : MEDIA_SYM EXTN_VAR"""
         p[2] = self._termwspac2nonterm( p, p[2], EXTN_VAR, ExtnVar )
-        x = [ None, None, p[2], None ]
-        meds = Mediums( p.parser, *self._buildterms(p, x) )
+        meds = Mediums( p.parser, None, None, p[2] )
         p[0] = [ MEDIA_SYM(p.parser, p[1]), meds, None, None, None, None ]
 
     def p_media_3( self, p ):
         """mediaspec    : mediaspec COMMA IDENT
                         | mediaspec COMMA IDENT S"""
         cls, value = p[2]
-        x = [ (IDENT, 3), (S, 4) ] if len(p)==5 else [ (IDENT, 3), None ]
-        x = [ p[1][1], cls(p.parser, value) ] + x
-        p[1][1] = Mediums( p.parser, *self._buildterms(p, x) )
+        comma = cls( p.parser, value )
+        wc = (len(p)==5) and WC(p.parser, None, S(p.parser, p[4]), None) or None
+        args = [ IDENT( p.parser, p[3] ), wc ]
+        p[1][1] = Mediums( p.parser, p[1][1], comma, Ident( p.parser, *args ) )
         p[0] = p[1]
 
     def p_media_4( self, p ):
         """mediaspec    : mediaspec COMMA EXTN_VAR"""
         cls, value = p[2]
+        comma = cls( p.parser, value )
         p[3] = self._termwspac2nonterm( p, p[3], EXTN_VAR, ExtnVar )
-        x = [ p[1][1], cls(p.parser, value), p[3], None ]
-        p[1][1] = Mediums( p.parser, *self._buildterms(p, x) )
+        p[1][1] = Mediums( p.parser, p[1][1], comma, p[3] )
         p[0] = p[1]
 
     def p_media_5( self, p ):
         """media        : mediaspec exprs openbrace rulesets closebrace"""
-        p[4] = Rulesets(p.parser, p[4], None)
+        p[4] = Rulesets( p.parser, p[4], None )
         p[1][2], p[1][3], p[1][4], p[1][5] = p[2], p[3], p[4], p[5]
         p[0] = Media( p.parser, *p[1] )
 
@@ -385,13 +385,11 @@ class TSSParser( object ):
 
     def p_pagemargin_1( self, p ):
         """pagemargin   : PAGE_MARGIN_SYM block"""
-        term = PAGE_MARGIN_SYM(p.parser, p[1])
-        p[0] = PageMargin( p.parser, term, p[2] )
+        p[0] = PageMargin( p.parser, PAGE_MARGIN_SYM(p.parser, p[1]), p[2] )
 
     def p_pagemargin_2( self, p ):
         """pagemargin   : PAGE_MARGIN_SYM"""
-        term = PAGE_MARGIN_SYM(p.parser, p[1])
-        p[0] = PageMargin( p.parser, term, None )
+        p[0] = PageMargin( p.parser, PAGE_MARGIN_SYM(p.parser, p[1]), None )
 
     #---- @import
 
@@ -403,33 +401,32 @@ class TSSParser( object ):
     def p_import_2( self, p ):
         """importspec   : importspec IDENT
                         | importspec IDENT S"""
-        x = [ (IDENT, 2), (S, 3) ] if len(p)==4 else [ (IDENT, 2), None ]
-        x = [ p[1][2], None ] + x
-        p[1][2] = Mediums( p.parser, *self._buildterms(p, x) )
+        wc = (len(p)==4) and WC(p.parser, None, S(p.parser, p[3]), None) or None
+        args = [ IDENT( p.parser, p[2] ), wc ]
+        p[1][2] = Mediums( p.parser, None, None, Ident(p.parser, *args) )
         p[0] = p[1]
 
     def p_import_3( self, p ):
         """importspec   : importspec EXTN_VAR"""
         p[2] = self._termwspac2nonterm( p, p[2], EXTN_VAR, ExtnVar )
-        x = [ p[1][2], None, p[2], None ]
-        p[1][2] = Mediums( p.parser, *self._buildterms(p, x) )
+        p[1][2] = Mediums( p.parser, p[1][2], None, p[2] )
         p[0] = p[1]
 
     def p_import_4( self, p ):
         """importspec   : importspec COMMA IDENT
                         | importspec COMMA IDENT S"""
-        x = [ (IDENT, 3), (S, 4) ] if len(p)==5 else [ (IDENT, 3), None ]
         cls, value = p[2]
-        x = [ p[1][2], cls(p.parser, value) ] + x
-        p[1][2] = Mediums( p.parser, *self._buildterms(p, x) )
+        comma = cls(p.parser, value)
+        wc = (len(p)==5) and WC(p.parser, None, S(p.parser, p[4]), None) or None
+        args = [ IDENT( p.parser, p[3] ), wc ]
+        p[1][2] = Mediums( p.parser, p[1][2], comma, Ident(p.parser, *args) )
         p[0] = p[1]
 
     def p_import_5( self, p ):
         """importspec   : importspec COMMA EXTN_VAR"""
         cls, value = p[2]
         p[3] = self._termwspac2nonterm( p, p[3], EXTN_VAR, ExtnVar )
-        x = [ p[1][2], cls(p.parser, value), p[3], None ]
-        p[1][2] = Mediums( p.parser, *self._buildterms(p, x) )
+        p[1][2] = Mediums( p.parser, p[1][2], cls(p.parser, value), p[3] )
         p[0] = p[1]
 
     def p_import_6( self, p ):
@@ -442,12 +439,12 @@ class TSSParser( object ):
     def p_extend_1( self, p ):
         """extend       : EXTEND_SYM selector SEMICOLON"""
         x = [ (EXTEND_SYM, 1), p[2], (SEMICOLON, 3), None ]
-        p[0] = Extend( p.parser, *self._buildterms(p, x) ]
+        p[0] = Extend( p.parser, *self._buildterms(p, x) )
     
     def p_extend_2( self, p ):
         """extend       : EXTEND_SYM selector SEMICOLON wc"""
         x = [ (EXTEND_SYM, 1), p[2], (SEMICOLON, 3), p[4] ]
-        p[0] = Extend( p.parser, *self._buildterms(p, x) ]
+        p[0] = Extend( p.parser, *self._buildterms(p, x) )
     
     #---- ruleset
 
@@ -455,9 +452,7 @@ class TSSParser( object ):
     # be checked inside `ElementName` class
     def p_rulesets_1( self, p ):
         """rulesets     : ruleset
-                        | import
-                        | rulesets ruleset
-                        | rulesets import"""
+                        | rulesets ruleset"""
         args = [ p[1], p[2] ] if len(p) == 3 else [ None, p[1] ]
         p[0] = Rulesets( p.parser, *args )
 
@@ -465,17 +460,23 @@ class TSSParser( object ):
         """rulesets     : EXTN_STATEMENT
                         | rulesets EXTN_STATEMENT"""
         if len(p) == 3 :
-            p[1] = self._termwspac2nonterm(p, p[1], EXTN_STATEMENT, ExtnStatement)
-            p[0] = Rulesets( p.parser, None, p[1] )
-        else :
             p[2] = self._termwspac2nonterm(p, p[2], EXTN_STATEMENT, ExtnStatement)
             p[0] = Rulesets( p.parser, p[1], p[2] )
+        else :
+            p[1] = self._termwspac2nonterm(p, p[1], EXTN_STATEMENT, ExtnStatement)
+            p[0] = Rulesets( p.parser, None, p[1] )
 
     def p_ruleset_1( self, p ):
         """ruleset      : block
                         | selectors block"""
         args = [ p[1], p[2] ] if len(p) == 3 else [ None, p[1] ]
+        args.append( None )
         p[0] = Ruleset( p.parser, *args )
+
+    def p_ruleset_2( self, p ):
+        """ruleset      : import
+                        | cdata"""
+        p[0] = Ruleset( p.parser, None, None, p[1] )
 
     def p_selectors_1( self, p ):
         """selectors    : selector"""
@@ -618,13 +619,15 @@ class TSSParser( object ):
                         | declaration
                         | pagemargin
                         | rulesets"""
-        p[1] = Rulesets(p.parser, p[1], None)
+        if isinstance( p[1], Rulesets ) :
+            p[1] = Rulesets(p.parser, p[1], None)
         p[0] = Declarations( p.parser, None, None, None, p[1] )
 
     def p_declarations_3( self, p ):
         """declarations : pagemargin declaration
                         | rulesets declaration"""
-        p[1] = Rulesets(p.parser, p[1], None)
+        if isinstance( p[1], Rulesets ) :
+            p[1] = Rulesets(p.parser, p[1], None)
         dcls = Declarations( p.parser, None, None, None, p[1] )
         p[0] = Declarations( p.parser, dcls, None, None, p[2] )
 
@@ -651,13 +654,15 @@ class TSSParser( object ):
     def p_declarations_8( self, p ):
         """declarations : declarations rulesets
                         | declarations pagemargin"""
-        p[2] = Rulesets(p.parser, p[2], None)
+        if isinstance( p[2], Rulesets ) :
+            p[2] = Rulesets(p.parser, p[2], None)
         p[0] = Declarations( p.parser, p[1], None, None, p[2] )
 
     def p_declarations_9( self, p ):
         """declarations : declarations pagemargin declaration
                         | declarations rulesets declaration"""
-        p[2] = Rulesets(p.parser, p[2], None)
+        if isinstance( p[2], Rulesets ) :
+            p[2] = Rulesets(p.parser, p[2], None)
         dcls = Declarations( p.parser, p[1], None, None, p[2] )
         p[0] = Declarations( p.parser, dcls, None, None, p[3] )
 
@@ -730,7 +735,11 @@ class TSSParser( object ):
 
     def p_exprs_2( self, p ):
         """exprs        : exprs expr"""
-        p[0] = Exprs( p.parser, p[1], None, p[2] )
+        plaincss = p.parser.tssparser.tssconfig.get('plaincss', False)
+        if plaincss :
+            p[0] = Exprs( p.parser, p[1], None, p[2] )
+        else :
+            p[0] = Exprs( p.parser, p[1], None, p[2], s=S(p.parser, ' ') )
 
     def p_exprs_3( self, p ):
         """exprs        : exprs COMMA expr"""
@@ -907,7 +916,8 @@ class TSSParser( object ):
         """closebrace   : CLOSEBRACE wc
                         | CLOSEBRACE"""
         t = CLOSEBRACE( p.parser, p[1] )
-        wc = p[2] if len(p) == 3 else None
+        # wc = WC(p.parser, None, S(p.parser, p[2]), None) if len(p)==3 else None
+        wc = p[2] if len(p)==3 else None
         p[0] = Closebrace( p.parser, t, wc )
 
     def p_opensqr( self, p ):
