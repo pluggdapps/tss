@@ -681,7 +681,7 @@ dt, .media_block .media_block_image {
 
 ul.bullets>li { margin-left:0.75em; }
 ul.bullets>li:before { 
-	content:"\2022";
+	content:"2022";
 	color:#787878;
 	float:left;
 	margin-left:-0.75em;
