@@ -1,5 +1,7 @@
-$fontsize =  12px;
-$lineheight = 30px;
+$x = '12px';
+$y = '30px';
+$margin = str(100 *2)+'px';
 p {
-  font: ${fontsize}/${lineheight};
+  font-size: ($x + $y);
+  margin : ${margin};
 }

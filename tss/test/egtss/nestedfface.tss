@@ -1,0 +1,21 @@
+@font-face {
+    font-family: 'Clarendon URW Bold';
+    src: url('http://f.fontdeck.com/f/1/ZjUzOUJZSWoABVdA2K+ZKnmaMpIq9vkmeJMqM+DzdbNCLH411QJASli2pxMvPgbiDnU.eot');
+    src: url('http://f.fontdeck.com/f/1/ZjUzOUJZSWoABVdA2K+ZKnmaMpIq9vkmeJMqM+DzdbNCLH411QJASli2pxMvPgbiDnU.eot?') format('embedded-opentype'),
+    url('http://f.fontdeck.com/f/1/ZjUzOUJZSWoABVdA2K+ZKnmaMpIq9vkmeJMqM+DzdbNCLH411QJASli2pxMvPgbiDnU.woff') format('woff'),
+    url('http://f.fontdeck.com/f/1/ZjUzOUJZSWoABVdA2K+ZKnmaMpIq9vkmeJMqM+DzdbNCLH411QJASli2pxMvPgbiDnU.ttf') format('opentype'),
+    url('http://f.fontdeck.com/f/1/ZjUzOUJZSWoABVdA2K+ZKnmaMpIq9vkmeJMqM+DzdbNCLH411QJASli2pxMvPgbiDnU.svg#373') format('svg');
+    font-weight: bold;
+    font-style: normal;
+}
+
+#main p {
+  color: #00ff00;
+}
+@font-face {
+  font-family: 'Conv_GB';
+  src: url('/css/fonts/GBB.eot');
+  src: url('/css/fonts/GBB.woff') format('woff'), url('/css/fonts/GBB.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+}

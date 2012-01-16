@@ -1,4 +1,4 @@
 p:before {
-  content: "Foo " + "Bar";
-  font-family: "sans-" + "serif";
+  content: ("Foo " + "Bar");
+  font-family: ("sans-" + "serif");
 }
