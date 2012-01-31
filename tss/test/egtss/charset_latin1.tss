@@ -1,5 +1,5 @@
 @charset "latin1";
 
 div:after {
-  content: Wikipédia est un projet dencyclopédie collective établie sur Internet;
+  content: 'Wikipédia est un projet dencyclopédie collective établie sur Internet';
 }

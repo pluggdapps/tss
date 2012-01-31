@@ -87,15 +87,15 @@ class TSSLexer( object ) :
         if self.directive_scan and self.directive_scan[-1][0] == 'EXTEND_SYM' :
             return True
         elif self.directive_scan == [] :
-            m = re.search( r';|([^\$]\{)|^\{|\}', data[pos:] )
-            return True if m and m.group()[0] not in ';}' else False
+            m = re.match( r'(([^;{]|(\$\{))*?(?=[^\$]{))|\{', data[pos:] )
+            return True if m else False
         else :
             return False
 
     def _inproperty( self, t ):
         data, pos = self.lexer.lexdata, self.lexer.lexpos
         if self.directive_scan == [] :
-            m = re.search( r'[^{}]+:', data[pos:] )
+            m = re.match( r'[^{};]+:', data[pos:] )
             return True if m else False
         else :
             return False
