@@ -1,6 +1,6 @@
 /*************************************************************************
  * TSS Style Sheet Extension language
- * Copyright (C) 2011 SKR Farms (P) LTD
+ * Copyright (C) 2013 R Pratap Chakravarthy
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by

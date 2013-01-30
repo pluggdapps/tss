@@ -68,3 +68,15 @@
 
 * How to deal with escaped unicode points in CSS text, like,
 	a { content:"\0020 \00B7"; }
+
+Rlease check-list 
+-----------------
+
+* Change the release version in 
+    ./CHANGELOG,
+    ./tss/__init__.py
+* Update setup.py and MANIFEST.in for release
+* Create a tag and push the tagged branch to code.google.com
+* Upload the source into pypi.
+        make upload
+* After making the release, taging the branch, increment the version number.

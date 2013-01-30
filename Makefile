@@ -7,19 +7,30 @@ bdist_egg :
 	python ./setup.py bdist_egg
 
 sdist :
-	cp CHANGELOG docs/CHANGELOG
-	cp LICENSE docs/LICENSE
-	cp README docs/README
-	cp ROADMAP docs/ROADMAP
 	python ./setup.py sdist
 
+sphinx-doc :
+	cp README.rst sphinxdoc/source/
+	cp CHANGELOG.rst sphinxdoc/source/
+	rm -rf sphinxdoc/build/html/
+	make -C sphinxdoc html
+	cd sphinxdoc/build/html; zip -r tss.sphinxdoc.zip ./
+
 upload : 
-	cp CHANGELOG docs/CHANGELOG
-	cp LICENSE docs/LICENSE
-	cp README docs/README
-	cp ROADMAP docs/ROADMAP
 	python ./setup.py sdist register -r http://www.python.org/pypi upload -r http://www.python.org/pypi --show-response 
 	
+pushcode: push-googlecode push-bitbucket push-github 
+
+push-googlecode:
+	hg push https://prataprc@code.google.com/p/tss/
+
+push-bitbucket:
+	hg push https://prataprc@bitbucket.org/prataprc/tss
+
+push-github:
+	hg bookmark -f -r default master
+	hg push git+ssh://git@github.com:prataprc/tss.git
+
 vimplugin :
 	rm -rf ./vim-plugin/vim-tss.tar.gz
 	cd ./vim-plugin; tar cvfz ./vim-tss.tar.gz *
