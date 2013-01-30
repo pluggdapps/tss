@@ -1,19 +1,17 @@
 #! /usr/bin/env python
 
+# -*- coding: utf-8 -*-
+
 # This file is subject to the terms and conditions defined in
 # file 'LICENSE', which is part of this source code package.
 #       Copyright (c) 2011 R Pratap Chakravarthy
 
-"""Command line execution"""
+from   argparse             import ArgumentParser
+from   os.path              import isfile, join, dirname, basename
 
-# -*- coding: utf-8 -*-
-
-# Gotcha : None
-# Notes  : None
-# Todo   : None
-
-from   optparse             import OptionParser
-from   os.path              import isfile
+import pluggdapps
+from   pluggdapps.platform import Pluggdapps
+from   pluggdapps.plugin   import ISettings
 
 import tss
 from   tss.parser           import TSSParser
@@ -47,6 +45,7 @@ def _option_parse() :
 def main() :
     options, args = _option_parse()
 
+
     if options.version :
         print tss.__version__
 
@@ -56,6 +55,49 @@ def main() :
     elif int(options.debug) :
         TSSParser( tssconfig={}, debug=int(options.debug) )
 
+def main()
+    argparser = mainoptions()
+    options = argparser.parse_args()
+    pa = Pluggdapps.boot( None )
+    
+    # Initialize plugins
+    setts = {
+        'lex_debug'  : int( options.debug ),
+        'yacc_debug' : int( options.debug ),
+        'debug'      : True,
+    }
+
+    compiler = pa.query_plugin( pa, ISettings, 'tsscompiler', settings=setts )
+    if options.version :
+        print( tss.__version__ )
+
+    elif options.test :
+        pass
+
+    elif options.ttllex and options.ttlfile : 
+        print( "Lexing file %r ..." % options.ttlfile )
+        lexical( pa, options )
+
+    elif options.dump and options.ttlfile :
+        print( "Parsing and dumping file %r ..." % options.ttlfile )
+        ast = yaccer( pa, options, debuglevel=int(options.debug) )
+        dumptext = ast.dump( context=Context() )
+        text = open( options.ttlfile, encoding='utf-8-sig' ).read()
+        if dumptext != text :
+            open( 'dump', 'w' ).write( dumptext )
+            open( 'text', 'w' ).write( text )
+            assert False
+        print( "Dump of AST matches the original text :)")
+
+    elif options.show and options.ttlfile :
+        print( "Parsing and describing file %r ..." % options.ttlfile )
+        ast = yaccer( pa, options, debuglevel=int(options.debug) )
+        ast.show()
+
+    elif options.ttlfile and isfile( options.ttlfile ) :
+        print( "Translating file %r ..." % options.ttlfile )
+        tayra.translatefile( options.ttlfile, compiler, options )
+
+
 if __name__ == '__main__' :
     main()
-

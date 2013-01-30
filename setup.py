@@ -7,11 +7,16 @@ from   setuptools import setup, find_packages
 from   os.path    import abspath, dirname, join
 
 here = abspath( dirname(__file__) )
-README = open(join(here, 'README.rst')).read()
+LONG_DESCRIPTION = open( join( here, 'README.rst' )).read(
+                       ).replace(':class:`', '`'
+                                ).replace(':mod:`', '`'
+                                         ).replace(':meth:`', '`')
 
-v = open(join(dirname(__file__), 'tss', '__init__.py'))
-version = re.compile(r".*__version__[ ]*=[ ]*'(.*?)'", re.S).match(v.read()).group(1)
-v.close()
+version = re.compile( 
+            r".*__version__[ ]*=[ ]*'(.*?)'",
+            re.S 
+          ).match( 
+            open( join( here, 'tss', '__init__.py' )).read()).group(1)
 
 description='CSS Extension language'
 
@@ -38,9 +43,16 @@ setup(
     exclude_package_data={},                # setuptools
     zip_safe=False,                         # setuptools
     entry_points={                          # setuptools
+        'console_scripts' : [
+           'tss = tss.tyrstyle:main',
+        ],
+        'pluggdapps' : [
+            'package=tss:package',
+        ]
     },
     install_requires=[                      # setuptools
         'ply>=3.4',
+        'pluggdapps>=0.2dev',
     ],
     extras_require={},                      # setuptools
     setup_requires={},                      # setuptools
@@ -58,9 +70,9 @@ setup(
     maintainer_email='prataprc@gmail.com',
     url='http://tss.pluggdapps.com',
     download_url='',
-    license='Simplified BSD license',
+    license='General Public License',
     description=description,
-    long_description=README,
+    long_description=LONG_DESCRIPTION,
     platforms='',
     classifiers=classifiers,
     keywords=[ 'template, web, html, css' ],
