@@ -173,7 +173,7 @@ class Translator( object ):
         entry = getattr( module, entryfn )
         args = context.get( '_mainargs', [] )
         kwargs = context.get( '_mainkwargs', {} )
-        css = entry( *args, **kwargs ) if callable( entry ) else u''
+        css = entry( *args, **kwargs ) if callable( entry ) else ''
         return css
 
 
