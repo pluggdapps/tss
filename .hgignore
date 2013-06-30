@@ -3,17 +3,17 @@ syntax: glob
 *.pyc
 *.swp
 *~
-tss-env
-eggs/
-build/
-dist/
 yacctab.py
 parsetab.py
 parser.out
 distribute-0.6.10.tar.gz
 .vim_maindev
 .vim_session
-tss.egg-info/
 # switch to regexp syntax.
 syntax: regexp
 ^\.pc/
+^tss-env/*
+^eggs/*
+^build/*
+^dist/*
+^tss.egg-info/*
